@@ -1,0 +1,89 @@
+cpptools-srv
+cpptools
+code
+gnome-shell
+exec.o
+gnome-terminal-
+VizCompositorTh
+KMS thread
+Xorg
+Xwayland
+auditd
+gdbus
+ibus-daemon
+ibus-engine-sim
+rtkit-daemon
+xdg-desktop-por
+Compositor
+Isolated Web Co
+Priviliged Cont
+systemd-oomd
+thermald
+TaskCon-ller #0
+Timer
+upowerd
+Web Content
+Backgro~Pool #1
+at-spi2-registr
+at-spi2-registryd
+ibus-extension-
+cpuUsage.sh
+sed
+sleep
+isc-net-0000
+gmain
+Chrome_IOThread
+Chrome_ChildIOT
+IPC I/O Child
+IPC I/O Parent
+InputThread
+libuv-worker
+ThreadPoolForeg
+ThreadPoolServi
+ThreadPoolSingl
+gsd-housekeepin
+Socket Thread
+StreamTrans #45
+avahi-daemon
+Privileged Cont
+gnome-text-edit
+MemoryPoller
+GpuWatchdog
+git
+dbus-daemon
+gsd-color
+gsd-power
+glean.dispatche
+RDD Process
+Socket Process
+Utility Process
+WebExtensions
+NetworkManager
+TaskConn~ller #0
+avahi-daemon
+Cache2 I/O
+CompositorTileW
+pipewire
+pipewire-pulse
+wireplumber
+(fwupdmgr)
+pool-gnome-shell
+LS Thread
+gsd-media-keys
+gio-launch-desk
+x-terminal-emul
+gnome-terminal
+docker
+pool-udisksd
+PeriodicMetricR
+Storage Diagnos
+DefaultDispatch
+Timer-0
+QuotaManager IO
+(sd-bright)
+systemd-udevd
+(sd-bright)
+(udev-worker)
+tracker-miner-f
+Renderer
+gvfs-udisks2-vo\

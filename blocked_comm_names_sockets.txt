@@ -1,0 +1,13 @@
+sudo
+systemd-resolve
+ls
+sshd
+docker
+vsftpd
+systemd
+redis-server
+IPC Launch
+(sd-bright)
+systemd-udevd
+(sd-bright)
+(udev-worker)

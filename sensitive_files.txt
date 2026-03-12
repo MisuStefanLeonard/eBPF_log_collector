@@ -1,0 +1,11 @@
+/etc/
+/tmp/
+/var/
+/.ssh/
+/bin/
+/usr/bin/
+/sbin/
+/lib/
+/usr/lib/
+/var/tmp/
+/.bashrc/

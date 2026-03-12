@@ -1,0 +1,10 @@
+cpuUsage.sh
+trace_pipe
+pool-gnome-term
+locale.alias
+mech.d
+btmp
+which
+ps
+dash
+loginuid

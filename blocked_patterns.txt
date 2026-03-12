@@ -1,0 +1,24 @@
+.so.
+.sqlite
+.so
+smaps
+trace_pipe
+cpuUsage
+oom_score_adj
+.swp
+.tmp
+.bak
+.~
+.journal
+DNS Res~
+BgIOThr~
+StreamT~
+StreamTrans
+.ttf
+DNS Resolver
+AudioIP
+.rdb
+__pycache__venv
+.cfg
+.pth
+.pyc
