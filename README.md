@@ -5,9 +5,8 @@
 ### Installation
 ```bash
 sudo apt install git build-essential clang llvm libbpf-dev 
-git clone https://github.com/iovisor/bpftool.git
-cd bpftool
-make
+git clone --recurse-submodules https://github.com/libbpf/bpftool.git
+cd bpftool/src
 sudo make install
 bpftool version
 ```
