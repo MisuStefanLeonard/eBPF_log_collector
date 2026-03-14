@@ -2,9 +2,18 @@
 
 ## 1. eBPF installation
 
+( if you want to see the .elf or dissasembly with bpftool and to set permissions on  eBPF programs e.g only ADMIN capabilities or ROOT, run this, ((--HERE it is not needed--)) , than continue with the rest)
+
+```bash
+sudo apt-get update
+sudo apt install git build-essential clang llvm libbpf-dev libssl-dev
+```
+
+
 ### Installation
 ```bash
-sudo apt install git build-essential clang llvm libbpf-dev 
+sudo apt-get update
+sudo apt install git build-essential clang llvm libbpf-dev libssl-dev
 git clone --recurse-submodules https://github.com/libbpf/bpftool.git
 cd bpftool/src
 sudo make install
