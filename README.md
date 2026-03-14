@@ -6,7 +6,7 @@
 
 ```bash
 sudo apt-get update
-sudo apt install git build-essential clang llvm libbpf-dev libssl-dev
+sudo apt install git build-essential clang llvm libbpf-dev libssl-dev libcap-dev binutils-dev
 ```
 
 
