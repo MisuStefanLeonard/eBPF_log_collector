@@ -45,10 +45,12 @@ static __always_inline int findRunnable(char *dst, const char filename[MAX_CHAR_
 struct
 {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 1);
+    __uint(max_entries, 2);
     __type(key, __u32);
     __type(value, __u32);
 } self_pid SEC(".maps");
+
+
 
 struct
 {
@@ -109,11 +111,19 @@ int trace_syscall_execve(struct trace_event_raw_sys_enter *ctx) {
     __u32 pid = id >> 32;
     __u32 ppid = (__u32)id;
     // bpf_printk("ccENTERED SYSCALL EXECVE ENTER\n");
-    bpf_printk("ENTERED SYSCALL EXECVE ENTER FOR PID -> %d\n", pid);
 
 
     if (my_pid){
         if (*my_pid == pid || *my_pid == ppid){
+            bpf_printk("(ZYZ)BLOCKED SYSCALL EXECVE ENTER FOR PID -> %d\n", pid);
+            return 0;
+        }
+    }
+    
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
             return 0;
         }
     }
@@ -147,6 +157,9 @@ int trace_syscall_execve(struct trace_event_raw_sys_enter *ctx) {
         bpf_printk("bbrxBlocked filename at check_file_open << %s >> \n", name);
         return 0;
     }
+
+    bpf_printk("(ZYZ)ENTERED SYSCALL EXECVE ENTER FOR PID -> %d\n", pid);
+
 
     int cpuid = bpf_get_smp_processor_id();
     TrackFileChanges *e = bpf_map_lookup_elem(&execve_calls, &pid);

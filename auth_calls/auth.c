@@ -33,7 +33,7 @@ struct
 struct
 {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 1);
+    __uint(max_entries, 2);
     __type(key, __u32);
     __type(value, __u32);
 } self_pid SEC(".maps");
@@ -96,6 +96,15 @@ int BPF_UPROBE(pam_authenticate_enter, pam_handle_t *pamh, int flags){
             return 0;
         }
     }
+    
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == pid_tgid) {
+            return 0;
+        }
+    }
+
     char comm[TYPE];
     bpf_get_current_comm(comm, sizeof(comm));
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);
@@ -348,6 +357,16 @@ __u32 key = 0;
             return 0;
         }
     }
+
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == pid_tgid) {
+            return 0;
+        }
+    }
+
+
     char comm[TYPE];
     bpf_get_current_comm(comm, sizeof(comm));
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);
@@ -578,6 +597,14 @@ __u32 key = 0;
             return 0;
         }
     }
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == pid_tgid) {
+            return 0;
+        }
+    }
+
     char comm[TYPE];
     bpf_get_current_comm(comm, sizeof(comm));
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);

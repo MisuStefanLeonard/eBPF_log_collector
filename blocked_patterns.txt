@@ -11,9 +11,11 @@ oom_score_adj
 .~
 .journal
 DNS Res~
-BgIOThr~
+BgIOThr~ool
 StreamT~
+Indexed~IO
 StreamTrans
+IPDL Back
 .ttf
 DNS Resolver
 AudioIP

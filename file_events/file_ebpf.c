@@ -62,7 +62,7 @@ struct
 struct
 {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 1);
+    __uint(max_entries, 2);
     __type(key, __u32);
     __type(value, __u32);
 } self_pid SEC(".maps");
@@ -171,6 +171,8 @@ SEC("fexit/vfs_read")
 int BPF_PROG(trace_vfs_read_exit, struct file *file, const char *buf, size_t count, loff_t *pos, ssize_t ret){
     __u64 pid_tgid = bpf_get_current_pid_tgid();
     __u32 pid = pid_tgid >> 32;
+    __u32 tid = (__u32) pid_tgid;
+
     
     TrackFileChanges *e = bpf_map_lookup_elem(&active_file_pids, &pid);
     if (!e){
@@ -186,12 +188,23 @@ int BPF_PROG(trace_vfs_read_exit, struct file *file, const char *buf, size_t cou
     if (e->has_emitted_read == 1) return 0;
     e->__generics.evt_type = EVENT_FILE_OPEN_AND_READ;
 
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == tid) {
+            bpf_printk("FFPid is %d - Tid is %d - pythonPid is %d", pid, tid , *pythonPid);
+            return 0;
+        }
+    }
+
     TrackFileChanges *event = bpf_ringbuf_reserve(&file_events, sizeof(*event), 0);
     if (!event)
     {
         bpf_printk("(fexit:vfs_read) Ringbuf reserve failed for pid=%d\n", pid);
         return 0;
     }
+
+   
 
     if (ret > 0) {
         e->was_file_modified = 0;
@@ -224,7 +237,10 @@ SEC("fexit/vfs_write")
 int BPF_PROG(trace_vfs_write_exit, struct file *file, const char *buf, size_t count, loff_t *pos, ssize_t ret)
 {
     __u64 pid_tgid = bpf_get_current_pid_tgid();
+
     __u32 pid = pid_tgid >> 32;
+    __u32 tid = (__u32) pid_tgid;
+
     
     TrackFileChanges *e = bpf_map_lookup_elem(&active_file_pids, &pid);
     if (!e){
@@ -239,6 +255,15 @@ int BPF_PROG(trace_vfs_write_exit, struct file *file, const char *buf, size_t co
 
     if (e->has_emitted_write == 1) return 0;
     e->__generics.evt_type = EVENT_FILE_OPEN_AND_WRITE;
+
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == tid) {
+            bpf_printk("OOPid is %d - Tid is %d - pythonPid is %d", pid, tid , *pythonPid);
+            return 0;
+        }
+    }
 
     TrackFileChanges *event = bpf_ringbuf_reserve(&file_events, sizeof(*event), 0);
     if (!event)
@@ -276,6 +301,7 @@ int BPF_PROG(check_file_open, struct file *file)
     my_pid = bpf_map_lookup_elem(&self_pid, &key);
 
     __u64 pid_tgid = bpf_get_current_pid_tgid();
+
     __u32 pid = pid_tgid >> 32;
     __u32 ppid = (__u32)pid_tgid;
 
@@ -283,6 +309,15 @@ int BPF_PROG(check_file_open, struct file *file)
     {
         if (*my_pid == pid || *my_pid == ppid)
         {
+            return 0;
+        }
+    }
+
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
+            bpf_printk("CCPid is %d - Tid is %d - pythonPid is %d", pid, ppid , *pythonPid);
             return 0;
         }
     }
@@ -296,6 +331,20 @@ int BPF_PROG(check_file_open, struct file *file)
     {
         return 0;
     }
+
+    char isMatch = iterate(comm);
+    if (isMatch == 1)
+    {
+        u8 temp = 1;
+        int update = bpf_map_update_elem(&blocked_patterns_pids, &pid, &temp, BPF_ANY);
+        if (update < 0) {
+            bpf_printk("brbrFailed to update blocked_patterns_pids <pid %d >", pid);
+        }else{
+            bpf_printk("brbrSuccesfully blocked_patterns_pids <pid %d >", pid);
+        }
+        return 0;
+    }
+
     __u32 mode = BPF_CORE_READ(file, f_inode, i_mode);
     // struct dentry *path = BPF_CORE_READ(file, f_path.dentry);
     // struct path *path = __builtin_preserve_access_index(&file->f_path);
@@ -573,12 +622,33 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
         }
     }
 
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
+            return 0;
+        }
+    }
+
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);
     if (isCommBlocked != NULL)
     {
+        return 0;
+    }
+
+    char isMatch = iterate(comm);
+    if (isMatch == 1)
+    {
+        u8 temp = 1;
+        int update = bpf_map_update_elem(&blocked_patterns_pids, &pid, &temp, BPF_ANY);
+        if (update < 0) {
+            bpf_printk("brbrFailed to update blocked_patterns_pids <pid %d >", pid);
+        }else{
+            bpf_printk("brbrSuccesfully blocked_patterns_pids <pid %d >", pid);
+        }
         return 0;
     }
 
@@ -887,6 +957,14 @@ int BPF_PROG(inode_create, struct inode *inode, struct dentry *dentry, umode_t m
         }
     }
 
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
+            return 0;
+        }
+    }
+
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
@@ -1112,6 +1190,14 @@ int BPF_PROG(inode_link, struct dentry *dentry, struct inode *inode, struct dent
     {
         if (*my_pid == pid || *my_pid == ppid)
         {
+            return 0;
+        }
+    }
+
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
             return 0;
         }
     }
@@ -1370,6 +1456,14 @@ int BPF_PROG(inode_symlink, struct inode *inode, struct dentry *dentry, const ch
         }
     }
 
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
+            return 0;
+        }
+    }
+
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
@@ -1616,6 +1710,14 @@ int BPF_PROG(inode_mkdir, struct inode *inode, struct dentry *dentry, umode_t mo
         }
     }
 
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
+            return 0;
+        }
+    }
+
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
@@ -1794,6 +1896,14 @@ int BPF_PROG(inode_rmdir_func, struct inode *inode, struct dentry *dentry)
         }
     }
 
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
+            return 0;
+        }
+    }
+
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
@@ -1958,6 +2068,14 @@ int BPF_PROG(inode_mknod, struct inode *inode, struct dentry *dentry, umode_t mo
     {
         if (*my_pid == pid || *my_pid == ppid)
         {
+            return 0;
+        }
+    }
+
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
             return 0;
         }
     }
@@ -2158,6 +2276,14 @@ int BPF_PROG(inode_rename, struct inode *old_inode, struct dentry *old_dir, stru
         }
     }
 
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
+            return 0;
+        }
+    }
+
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
@@ -2194,24 +2320,44 @@ int BPF_PROG(inode_rename, struct inode *old_inode, struct dentry *old_dir, stru
     bpf_probe_read_kernel_str(file_event->__generics.comm, sizeof(file_event->__generics.comm), comm);
 
     // new filename
+
+    __builtin_memset(file_event->new_filename, 0, sizeof(file_event->new_filename));
+    const unsigned char *new_filename_ptr = BPF_CORE_READ(new_dir, d_name.name);
+
+   
+    if (new_filename_ptr) {
+      
+        long ret = bpf_probe_read_kernel_str(file_event->new_filename, sizeof(file_event->new_filename), new_filename_ptr);
+        bpf_printk("KERNEL RENAME HOOK: %s\n", file_event->new_filename);
+        if (ret < 0) {
+            char fallback[] = "read_failed";
+            __builtin_memcpy(file_event->new_filename, fallback, sizeof(fallback));
+        }
+    } else {
+        char null_fallback[] = "null_ptr";
+        __builtin_memcpy(file_event->new_filename, null_fallback, sizeof(null_fallback));
+    }
+
     // const char unsigned *new_filename = BPF_CORE_READ(new_dir, d_name.name);
     // bpf_probe_read_kernel_str(file_event->new_filename, sizeof(file_event->new_filename), new_filename);
 
-    // 1. Extragem pointer-ul către nume și lungimea exactă a acestuia
-    const char unsigned *new_filename_ptr = BPF_CORE_READ(new_dir, d_name.name);
-    __u32 new_name_len = BPF_CORE_READ(new_dir, d_name.len);
+    
 
-    // 2. Ne asigurăm că lungimea nu depășește dimensiunea buffer-ului nostru din inel (ringbuf)
-    // Lăsăm 1 byte liber pentru terminatorul de string (\0)
-    if (new_name_len >= sizeof(file_event->new_filename)) {
-        new_name_len = sizeof(file_event->new_filename) - 1;
-    }
+    // // 1. Extragem pointer-ul către nume și lungimea exactă a acestuia
+    // const char unsigned *new_filename_ptr = BPF_CORE_READ(new_dir, d_name.name);
+    // __u32 new_name_len = BPF_CORE_READ(new_dir, d_name.len);
 
-    // 3. Folosim bpf_probe_read_kernel (fără _str) pentru a citi EXACT acei bytes, niciunul în plus
-    bpf_probe_read_kernel(file_event->new_filename, new_name_len, new_filename_ptr);
+    // // 2. Ne asigurăm că lungimea nu depășește dimensiunea buffer-ului nostru din inel (ringbuf)
+    // // Lăsăm 1 byte liber pentru terminatorul de string (\0)
+    // if (new_name_len >= sizeof(file_event->new_filename)) {
+    //     new_name_len = sizeof(file_event->new_filename) - 1;
+    // }
 
-    // 4. Adăugăm manual terminatorul de string pentru a fi perfect lizibil în user-space (C/Python)
-    file_event->new_filename[new_name_len] = '\0';
+    // // 3. Folosim bpf_probe_read_kernel (fără _str) pentru a citi EXACT acei bytes, niciunul în plus
+    // bpf_probe_read_kernel(file_event->new_filename, new_name_len, new_filename_ptr);
+
+    // // 4. Adăugăm manual terminatorul de string pentru a fi perfect lizibil în user-space (C/Python)
+    // file_event->new_filename[new_name_len] = '\0';
 
     // filename (old filename)
     bpf_core_read_str(file_event->__generics.filename, sizeof(file_event->__generics.filename), filename);

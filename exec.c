@@ -12,6 +12,9 @@
 #include <limits.h>
 #include <time.h>
 #include "redis/redislogic.h"
+#include <stdbool.h>
+#include <signal.h>
+#include <errno.h>
 // #include "redis/redislogic.c"
 #include "execve_called/exec.h"
 #include "file_events/file_exec.h"
@@ -30,6 +33,8 @@
 /* Global CSV file handle */
 FILE *csv_file = NULL;
 static char sensitive_list[MAX_SENSITIVE][MAX_PATH_LEN];
+static char sensitive_patterns_file_names[64][64];
+static char sensitive_patterns_exe[64][64];
 static int sensitive_count = 0;
 static int blocked_comm_count = 0;
 static int blocked_filenames_count = 0;
@@ -39,9 +44,14 @@ static int blocked_comms_from_filenames_count = 0;
 static redisContext* client;
 const int redisPort = 6379;
 static __u8 blocked = 1;
+static volatile bool isStopped = false;
 
 void convert_from_int_to_ipv4(unsigned char* buff, unsigned int ipv4);
 const char *event_type_to_str(event_type type);
+
+static void sig_handler(int sig) {
+    isStopped = true;
+}
 
 char* createJson(TrackFileChanges event, const char *username, const char *groupname
     ,unsigned int permission_bits_octal_old_mode, unsigned int permission_bits_octal_new_mode,
@@ -675,9 +685,73 @@ unsigned char is_sensitive_file(const char *filename)
     return 0;
 }
 
+void loadCLevelFiles(){
+    FILE *fp_bfpfp = fopen("blacklist_full_path_filenames_patterns.txt", "r");
+    FILE *fp_e = fopen("blacklist_exe.txt", "r");
+
+    if (!fp_bfpfp)
+    {
+        perror("Failed to open blacklist_full_path_filenames_patterns.txt");
+        return;
+    }
+
+    if (!fp_e)
+    {
+        perror("Failed to open blacklist_full_path_filenames_patterns.txt");
+        return;
+    }
+    char buffer[64] = {};
+    int count = 0;
+    while (fgets(buffer, sizeof(buffer),fp_bfpfp) != NULL)
+    {
+        buffer[strcspn(buffer, "\n")] = '\0'; // remove newline
+        if (count < 64)
+        {
+            strncpy(sensitive_patterns_file_names[count], buffer, sizeof(sensitive_patterns_file_names[0]) - 1);
+            sensitive_patterns_file_names[count][sizeof(sensitive_patterns_file_names[0]) - 1] = '\0';
+            count++;
+        }
+    }
+
+    fclose(fp_bfpfp);
+
+    memset(buffer, 0, sizeof(buffer));
+    count = 0;
+    while (fgets(buffer, sizeof(buffer),fp_e) != NULL)
+    {
+        buffer[strcspn(buffer, "\n")] = '\0'; // remove newline
+        if (count < 64)
+        {
+            strncpy(sensitive_patterns_exe[count], buffer, sizeof(sensitive_patterns_exe[0]) - 1);
+            sensitive_patterns_exe[count][sizeof(sensitive_patterns_exe[0]) - 1] = '\0';
+            count++;
+        }
+    }
+
+    fclose(fp_e);
+    return;
+
+}
+
+bool checkPatterns(const char* name,char whereToCheck){
+    if (whereToCheck == 'e'){
+        // check exe patterns
+    }else if (whereToCheck == 'f'){
+        // check filenames patterns
+    }
+}
+
 
 static int handle_event(void *ctx, void *data, size_t sa)
 {
+
+    if (isStopped) {
+        return -1; 
+    }
+
+    loadCLevelFiles();
+
+
     const TrackFileChanges *event = (TrackFileChanges *)data;
     
     struct passwd *pw;
@@ -712,6 +786,7 @@ static int handle_event(void *ctx, void *data, size_t sa)
     // --- Resolve full path for filename ---
     char full_path[FILENAME_MAX];
     char full_path_new[FILENAME_MAX];
+    bool isPatternPresentInFilename;
     if (strcmp(local_event.__generics.filename, local_event.new_filename) == 0){
         if (resolve_complete_path(local_event.__generics.pid,
                                     local_event.__generics.filename,
@@ -729,6 +804,11 @@ static int handle_event(void *ctx, void *data, size_t sa)
                         sizeof(local_event.new_filename) - 1);
                 local_event.new_filename[sizeof(local_event.new_filename) - 1] = '\0';
                 
+                isPatternPresentInFilename = checkPatterns(local_event.__generics.filename, 'f');
+
+                if (isPatternPresentInFilename){
+                    return;
+                }
             }
     }else{
         if (resolve_complete_path(local_event.__generics.pid,
@@ -742,6 +822,12 @@ static int handle_event(void *ctx, void *data, size_t sa)
                 strncpy(local_event.__generics.filename, full_path,
                         sizeof(local_event.__generics.filename) - 1);
                 local_event.__generics.filename[sizeof(local_event.__generics.filename) - 1] = '\0';
+
+                isPatternPresentInFilename = checkPatterns(local_event.__generics.filename, 'f');
+                
+                if (isPatternPresentInFilename){
+                    return;
+                }
             }
         if (resolve_complete_path(local_event.__generics.pid,
                                     local_event.new_filename,
@@ -763,6 +849,11 @@ static int handle_event(void *ctx, void *data, size_t sa)
     if (resolve_full_exe(local_event.__generics.pid,exe,sizeof(exe)) != 0)
     {
         printf("Did not manage to get exe\n");
+    }else{
+        bool isPatternPresentInExe = checkPatterns(exe,'e');
+        if (isPatternPresentInExe){
+            return;
+        }
     }
 
     unsigned int permission_bits_octal_old_mode = local_event.mode & MODE_MASK;
@@ -918,7 +1009,7 @@ int main(void)
 {
     libbpf_set_print(libbpf_print_fn);
     setenv("LIBBPF_DEBUG", "1", 1);
-
+    struct ring_buffer *file_events = NULL;
     /* CSV setup */
     csv_file = fopen("events.csv", "w");
     if (!csv_file)
@@ -1022,6 +1113,28 @@ int main(void)
         goto cleanup;
     }
 
+    /* IMPORTANT FOR THE PYTHON PART*/
+    fprintf(stdout, "Pinning map (self_pid) to /sys/fs/bpf/self_pid_map\n");
+    bool skipPinning = false;
+    bool isMapPinnedAlready = bpf_map__is_pinned(file_skel->maps.self_pid);
+    if (isMapPinnedAlready == true){
+        fprintf(stdout, "Map is already pinned... Continue...\n");
+        skipPinning = true;
+    }
+
+    if (skipPinning != true){
+        unsigned int isPinned = bpf_map__pin(file_skel->maps.self_pid, "/sys/fs/bpf/self_pid_map");
+        if (isPinned == 0){
+            fprintf(stdout, "(SUCCESS) Succesfully pinned map (self_pid) to /sys/fs/bpf/self_pid_map\n");
+
+        }else{
+            fprintf(stderr, "(FAIL) Unsuccesfully pinned map (self_pid) to /sys/fs/bpf/self_pid_map\n");
+            goto cleanup;
+        }
+    }else{
+        fprintf(stdout,"Skipped map pinning....\n");
+    }
+    
     /*
         3.*****************EXTRACT THE MAPS FILE DESCRIPTORS *************************
     */
@@ -1150,9 +1263,9 @@ int main(void)
         fprintf(stderr, "Could not connect to redis server\n");
         return 1;
     }
-
+    // de terminat check-ul pentru pattern-uri . vezi functia bool definita!
     // GET THE BUFFER
-    struct ring_buffer *file_events = ring_buffer__new(ring_buffer_fd,handle_event, NULL, NULL);
+    file_events = ring_buffer__new(ring_buffer_fd,handle_event, NULL, NULL);
 
     int pid = getpid();
     printf("Current PID: %d\n", pid);
@@ -1165,10 +1278,29 @@ int main(void)
         goto cleanup;
     }
 
-    for (;;)
-    {
-        ring_buffer__poll(file_events, 100);
+    signal(SIGINT, sig_handler);
+    signal(SIGTERM, sig_handler);
 
+    // for (;;)
+    // {
+    //     ring_buffer__poll(file_events, 100);
+
+    // }
+
+    while (!isStopped)
+    {
+        int err = ring_buffer__poll(file_events, 100);
+        
+      
+        if (err == -EINTR) {
+            break; 
+        }
+        
+        // Catch any other actual errors
+        if (err < 0) {
+            printf("Error polling ring buffer: %d\n", err);
+            break;
+        }
     }
 
 cleanup:
@@ -1181,6 +1313,7 @@ cleanup:
     if (client)
         redisFree(client);
 
+    bpf_map__unpin(file_skel->maps.self_pid, "/sys/fs/bpf/self_pid_map");
     file_ebpf__destroy(file_skel);
     ebpf__destroy(execve_skel);
     process_events_ebpf__destroy(proc_skel);

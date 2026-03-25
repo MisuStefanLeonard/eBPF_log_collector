@@ -22,7 +22,7 @@ struct
 struct
 {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 1);
+    __uint(max_entries, 2);
     __type(key, __u32);
     __type(value, __u32);
 } self_pid SEC(".maps");
@@ -140,6 +140,14 @@ int BPF_PROG(socket_create, int protocol_family, int socket_type, int protocol, 
 
     if (my_pid){
         if (*my_pid == pid || *my_pid == ppid){
+            return 0;
+        }
+    }
+
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
             return 0;
         }
     }
@@ -316,6 +324,14 @@ int BPF_PROG(socket_bind, struct socket *sock, struct sockaddr *addr, int addrle
 
     if (my_pid){
         if (*my_pid == pid || *my_pid == ppid){
+            return 0;
+        }
+    }
+
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
             return 0;
         }
     }
@@ -559,6 +575,14 @@ int BPF_PROG(socket_connect, struct socket *sock, struct sockaddr *addr, int add
         }
     }
 
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
+            return 0;
+        }
+    }
+
     char comm[TYPE];
     bpf_get_current_comm(&comm, sizeof(comm));
 
@@ -798,6 +822,14 @@ int BPF_PROG(socket_listen, struct socket *sock, int backlog)
         }
     }
 
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
+            return 0;
+        }
+    }
+
     char comm[TYPE];
     bpf_get_current_comm(&comm, sizeof(comm));
 
@@ -1023,6 +1055,14 @@ int BPF_PROG(socket_accept, struct socket *listening_socket, struct socket *conn
 
     if (my_pid){
         if (*my_pid == pid || *my_pid == ppid){
+            return 0;
+        }
+    }
+
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
             return 0;
         }
     }

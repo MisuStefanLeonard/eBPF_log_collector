@@ -87,3 +87,13 @@ systemd-udevd
 tracker-miner-f
 Renderer
 gvfs-udisks2-vo\
+fwupdmgr
+log-server
+ftdc
+flask
+listener
+deja-dup
+gvfsd
+cloud-id
+Checkpointer
+JobScheduler FJ

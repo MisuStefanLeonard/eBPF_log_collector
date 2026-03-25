@@ -7,7 +7,7 @@
 struct
 {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 1);
+    __uint(max_entries, 2);
     __type(key, __u32);
     __type(value, __u32);
 } self_pid SEC(".maps");
@@ -80,6 +80,14 @@ int trace_process_exit(struct trace_event_raw_sched_process_template *ctx){
 
     if (my_pid){
         if (*my_pid == pid || *my_pid == tgid){
+            return 0;
+        }
+    }
+
+    __u32 pythonKey = 1;
+    __u32 *pythonPid = bpf_map_lookup_elem(&self_pid, &pythonKey);
+    if (pythonPid) {
+        if (*pythonPid == pid || *pythonPid == ppid) {
             return 0;
         }
     }
