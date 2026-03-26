@@ -118,7 +118,6 @@ static int iterate_cb(u32 i, void *data)
 static char iterate(const char *str)
 {
     struct iterate_ctx ctx = {};
-    // __builtin_memset(&ctx, 0, sizeof(ctx));
     ctx.match_found = 0;
     ctx.filename = str;
     bpf_loop(LITTLE_MAP_SIZE, iterate_cb, &ctx, 0);
@@ -174,7 +173,6 @@ int BPF_PROG(socket_create, int protocol_family, int socket_type, int protocol, 
 
     if (kernel == 1)
     {
-        // skipping internal socket creation by kernel
         return 0;
     }
 
@@ -216,9 +214,7 @@ int BPF_PROG(socket_create, int protocol_family, int socket_type, int protocol, 
     __builtin_memcpy(sock_create_evt->file_type, "void", sizeof("void"));
     __builtin_memcpy(sock_create_evt->file_type_new, "void", sizeof("void"));
 
-    // ─────────────────────────────
-    // 🔐 AUTH SECTION DEFAULTS
-    // ─────────────────────────────
+
     sock_create_evt->__auth.is_success = -1;
     sock_create_evt->__auth.is_switching_user = -1;
     sock_create_evt->__auth.is_switching_root = -1;
@@ -235,9 +231,7 @@ int BPF_PROG(socket_create, int protocol_family, int socket_type, int protocol, 
         __builtin_memset(sock_create_evt->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // ─────────────────────────────
-    // 🌐 SOCKET SECTION DEFAULTS
-    // ─────────────────────────────
+   
     sock_create_evt->__sock.is_important_port = -1;
     sock_create_evt->__sock.port = -1;
     sock_create_evt->__sock.ipv4 = -1;
@@ -252,9 +246,7 @@ int BPF_PROG(socket_create, int protocol_family, int socket_type, int protocol, 
     __builtin_memcpy(sock_create_evt->__sock.local_ipv6_socket_addr, "void", sizeof("void"));
     __builtin_memcpy(sock_create_evt->__sock.path, "void", sizeof("void"));
 
-    // ─────────────────────────────
-    // 📂 FILE SECTION DEFAULTS
-    // ─────────────────────────────
+   
     sock_create_evt->mode = 0;
     sock_create_evt->new_mode = 0;
     sock_create_evt->old_uid = sock_create_evt->__generics.uid;
@@ -262,13 +254,11 @@ int BPF_PROG(socket_create, int protocol_family, int socket_type, int protocol, 
     sock_create_evt->old_gid = sock_create_evt->__generics.gid;
     sock_create_evt->new_gid = sock_create_evt->old_gid;
 
-    // sock_create_evt->old_size = -1;
-    // sock_create_evt->new_size = -1;
 
     sock_create_evt->was_permission_changed = 0;
     sock_create_evt->was_owner_changed = 0;
     sock_create_evt->was_group_changed = 0;
-    // sock_create_evt->was_size_extended = 0;
+    
     sock_create_evt->was_creation_time_changed = 0;
     sock_create_evt->was_access_time_changed = 1; // writing updates atime
     sock_create_evt->was_modified_time_changed = 0;
@@ -294,12 +284,9 @@ int BPF_PROG(socket_create, int protocol_family, int socket_type, int protocol, 
     sock_create_evt->dev_minor_new = -1;
     sock_create_evt->rdev_major = -1;
     sock_create_evt->rdev_minor = -1;
-    // sock_create_evt->i_bdev_major = -1;
-    // sock_create_evt->i_bdev_minor = -1;
+    
     sock_create_evt->rdev_major_new = -1;
     sock_create_evt->rdev_minor_new = -1;
-    // sock_create_evt->i_bdev_major_new = -1;
-    // sock_create_evt->i_bdev_minor_new = -1;
 
     sock_create_evt->is_symlink = -1;
     sock_create_evt->was_file_created = -1;
@@ -367,7 +354,7 @@ int BPF_PROG(socket_bind, struct socket *sock, struct sockaddr *addr, int addrle
     struct sock *sk = BPF_CORE_READ(sock, sk);
     u8 kern_sock = BPF_CORE_READ_BITFIELD_PROBED(sk, sk_kern_sock);
     sock_bind_evt->__sock.kernel_sock = kern_sock;
-    // bpf_probe_read_kernel(&sock_bind_evt->__sock.kernel_sock, sizeof(sock_bind_evt->__sock.kernel_sock), &sk->sk_kern_sock);
+    
     if (sock_bind_evt->__sock.kernel_sock == 1)
     {
         bpf_ringbuf_discard(sock_bind_evt,0);
@@ -425,7 +412,6 @@ int BPF_PROG(socket_bind, struct socket *sock, struct sockaddr *addr, int addrle
     {
         struct sockaddr_in *sin = (struct sockaddr_in *)addr;
         unsigned short port = BPF_CORE_READ(sin, sin_port);
-        // unsigned int ip = bpf_ntohl(BPF_CORE_READ(sin, sin_addr.s_addr));
         unsigned int ip = BPF_CORE_READ(sin, sin_addr.s_addr);
 
 
@@ -463,7 +449,7 @@ int BPF_PROG(socket_bind, struct socket *sock, struct sockaddr *addr, int addrle
             sock_bind_evt->__sock.path,
             sizeof(sock_bind_evt->__sock.path),
             &sin_u->sun_path);
-        // prob aici
+        
         struct sock* sk_sock = BPF_CORE_READ(sock,sk);
         struct unix_sock *unix_sock = (struct unix_sock *)sk_sock;
         struct pid *peer_pid = BPF_CORE_READ(sk_sock, sk_peer_pid);
@@ -500,9 +486,7 @@ int BPF_PROG(socket_bind, struct socket *sock, struct sockaddr *addr, int addrle
         __builtin_memset(sock_bind_evt->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // ─────────────────────────────
-    // 📂 FILE SECTION DEFAULTS
-    // ─────────────────────────────
+   
     sock_bind_evt->mode = 0;
     sock_bind_evt->new_mode = 0;
     sock_bind_evt->old_uid = sock_bind_evt->__generics.uid;
@@ -510,13 +494,11 @@ int BPF_PROG(socket_bind, struct socket *sock, struct sockaddr *addr, int addrle
     sock_bind_evt->old_gid = sock_bind_evt->__generics.gid;
     sock_bind_evt->new_gid = sock_bind_evt->old_gid;
 
-    // sock_bind_evt->old_size = -1;
-    // sock_bind_evt->new_size = -1;
 
     sock_bind_evt->was_permission_changed = 0;
     sock_bind_evt->was_owner_changed = 0;
     sock_bind_evt->was_group_changed = 0;
-    // sock_bind_evt->was_size_extended = 0;
+ 
     sock_bind_evt->was_creation_time_changed = 0;
     sock_bind_evt->was_access_time_changed = 0; // writing updates atime
     sock_bind_evt->was_modified_time_changed = 0;
@@ -543,12 +525,10 @@ int BPF_PROG(socket_bind, struct socket *sock, struct sockaddr *addr, int addrle
     sock_bind_evt->dev_minor_new = -1;
     sock_bind_evt->rdev_major = -1;
     sock_bind_evt->rdev_minor = -1;
-    // sock_bind_evt->i_bdev_major = -1;
-    // sock_bind_evt->i_bdev_minor = -1;
+    
     sock_bind_evt->rdev_major_new = -1;
     sock_bind_evt->rdev_minor_new = -1;
-    // sock_bind_evt->i_bdev_major_new = -1;
-    // sock_bind_evt->i_bdev_minor_new = -1;
+  
 
     sock_bind_evt->is_symlink = -1;
     sock_bind_evt->was_file_created = -1;
@@ -747,9 +727,7 @@ int BPF_PROG(socket_connect, struct socket *sock, struct sockaddr *addr, int add
         __builtin_memset(sock_connect_evt->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // ─────────────────────────────
-    // 📂 FILE SECTION DEFAULTS
-    // ─────────────────────────────
+   
     sock_connect_evt->mode = 0;
     sock_connect_evt->new_mode = 0;
     sock_connect_evt->old_uid = sock_connect_evt->__generics.uid;
@@ -757,13 +735,12 @@ int BPF_PROG(socket_connect, struct socket *sock, struct sockaddr *addr, int add
     sock_connect_evt->old_gid = sock_connect_evt->__generics.gid;
     sock_connect_evt->new_gid = sock_connect_evt->old_gid;
 
-    // sock_connect_evt->old_size = -1;
-    // sock_connect_evt->new_size = -1;
+   
 
     sock_connect_evt->was_permission_changed = 0;
     sock_connect_evt->was_owner_changed = 0;
     sock_connect_evt->was_group_changed = 0;
-    // sock_connect_evt->was_size_extended = 0;
+   
     sock_connect_evt->was_creation_time_changed = 0;
     sock_connect_evt->was_access_time_changed = 0; // writing updates atime
     sock_connect_evt->was_modified_time_changed = 0;
@@ -790,12 +767,10 @@ int BPF_PROG(socket_connect, struct socket *sock, struct sockaddr *addr, int add
     sock_connect_evt->dev_minor_new = -1;
     sock_connect_evt->rdev_major = -1;
     sock_connect_evt->rdev_minor = -1;
-    // sock_connect_evt->i_bdev_major = -1;
-    // sock_connect_evt->i_bdev_minor = -1;
+  
     sock_connect_evt->rdev_major_new = -1;
     sock_connect_evt->rdev_minor_new = -1;
-    // sock_connect_evt->i_bdev_major_new = -1;
-    // sock_connect_evt->i_bdev_minor_new = -1;
+
 
     sock_connect_evt->is_symlink = -1;
     sock_connect_evt->was_file_created = -1;
@@ -920,12 +895,11 @@ int BPF_PROG(socket_listen, struct socket *sock, int backlog)
     if (family == AF_INET)
     {
         // local connection
-        // unsigned int ip_local = bpf_ntohl(BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr));
         unsigned int ip_local = BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr);
         unsigned short port_local = BPF_CORE_READ(sk, __sk_common.skc_num);
 
         // outbound connection
-        // unsigned int ip_out = bpf_ntohl(BPF_CORE_READ(sk, __sk_common.skc_daddr));
+
         unsigned int ip_out = BPF_CORE_READ(sk, __sk_common.skc_daddr);
         unsigned short port_out = BPF_CORE_READ(sk, __sk_common.skc_dport);
 
@@ -946,8 +920,7 @@ int BPF_PROG(socket_listen, struct socket *sock, int backlog)
     }
     else if (family == AF_INET6)
     {
-        // struct in6_addr skc_v6_daddr;
-        // struct in6_addr skc_v6_rcv_saddr;
+
 
         unsigned short port_local = BPF_CORE_READ(sk, __sk_common.skc_num);
         unsigned short port_out = BPF_CORE_READ(sk, __sk_common.skc_dport);
@@ -984,9 +957,7 @@ int BPF_PROG(socket_listen, struct socket *sock, int backlog)
         __builtin_memset(sock_listen_event->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // ─────────────────────────────
-    // 📂 FILE SECTION DEFAULTS
-    // ─────────────────────────────
+   
     sock_listen_event->mode = 0;
     sock_listen_event->new_mode = 0;
     sock_listen_event->old_uid = sock_listen_event->__generics.uid;
@@ -994,13 +965,11 @@ int BPF_PROG(socket_listen, struct socket *sock, int backlog)
     sock_listen_event->old_gid = sock_listen_event->__generics.gid;
     sock_listen_event->new_gid = sock_listen_event->old_gid;
 
-    // sock_listen_event->old_size = -1;
-    // sock_listen_event->new_size = -1;
 
     sock_listen_event->was_permission_changed = 0;
     sock_listen_event->was_owner_changed = 0;
     sock_listen_event->was_group_changed = 0;
-    // sock_listen_event->was_size_extended = 0;
+   
     sock_listen_event->was_creation_time_changed = 0;
     sock_listen_event->was_access_time_changed = 0; // writing updates atime
     sock_listen_event->was_modified_time_changed = 0;
@@ -1026,12 +995,10 @@ int BPF_PROG(socket_listen, struct socket *sock, int backlog)
     sock_listen_event->dev_minor_new = -1;
     sock_listen_event->rdev_major = -1;
     sock_listen_event->rdev_minor = -1;
-    // sock_listen_event->i_bdev_major = -1;
-    // sock_listen_event->i_bdev_minor = -1;
+   
     sock_listen_event->rdev_major_new = -1;
     sock_listen_event->rdev_minor_new = -1;
-    // sock_listen_event->i_bdev_major_new = -1;
-    // sock_listen_event->i_bdev_minor_new = -1;
+  
 
     sock_listen_event->is_symlink = -1;
     sock_listen_event->was_file_created = -1;
@@ -1154,12 +1121,10 @@ int BPF_PROG(socket_accept, struct socket *listening_socket, struct socket *conn
     if (family == AF_INET)
     {
         // local connection
-        // unsigned int ip_local = bpf_ntohl(BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr));
         unsigned int ip_local = BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr);
         unsigned short port_local = bpf_ntohl(BPF_CORE_READ(sk, __sk_common.skc_num));
 
         // outbound connection
-        // unsigned int ip_out = BPF_CORE_READ(connection_sock, __sk_common.skc_daddr);
         unsigned int ip_out = BPF_CORE_READ(sk, __sk_common.skc_daddr);
         unsigned short port_out = BPF_CORE_READ(connection_sock, __sk_common.skc_dport);
 
@@ -1180,9 +1145,7 @@ int BPF_PROG(socket_accept, struct socket *listening_socket, struct socket *conn
     }
     else if (family == AF_INET6)
     {
-        // struct in6_addr skc_v6_daddr;
-        // struct in6_addr skc_v6_rcv_saddr;
-
+        
         unsigned short port_local = BPF_CORE_READ(sk, __sk_common.skc_num);
         unsigned short port_out = BPF_CORE_READ(connection_sock, __sk_common.skc_dport);
 
@@ -1240,9 +1203,7 @@ int BPF_PROG(socket_accept, struct socket *listening_socket, struct socket *conn
         __builtin_memset(sock_accept_evt->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // ─────────────────────────────
-    // 📂 FILE SECTION DEFAULTS
-    // ─────────────────────────────
+   
     sock_accept_evt->mode = 0;
     sock_accept_evt->new_mode = 0;
     sock_accept_evt->old_uid = sock_accept_evt->__generics.uid;
@@ -1250,13 +1211,10 @@ int BPF_PROG(socket_accept, struct socket *listening_socket, struct socket *conn
     sock_accept_evt->old_gid = sock_accept_evt->__generics.gid;
     sock_accept_evt->new_gid = sock_accept_evt->old_gid;
 
-    // sock_accept_evt->old_size = -1;
-    // sock_accept_evt->new_size = -1;
-
     sock_accept_evt->was_permission_changed = 0;
     sock_accept_evt->was_owner_changed = 0;
     sock_accept_evt->was_group_changed = 0;
-    // sock_accept_evt->was_size_extended = 0;
+   
     sock_accept_evt->was_creation_time_changed = 0;
     sock_accept_evt->was_access_time_changed = 0; // writing updates atime
     sock_accept_evt->was_modified_time_changed = 0;
@@ -1282,13 +1240,10 @@ int BPF_PROG(socket_accept, struct socket *listening_socket, struct socket *conn
     sock_accept_evt->dev_minor_new = -1;
     sock_accept_evt->rdev_major = -1;
     sock_accept_evt->rdev_minor = -1;
-    // sock_accept_evt->i_bdev_major = -1;
-    // sock_accept_evt->i_bdev_minor = -1;
+   
     sock_accept_evt->rdev_major_new = -1;
     sock_accept_evt->rdev_minor_new = -1;
-    // sock_accept_evt->i_bdev_major_new = -1;
-    // sock_accept_evt->i_bdev_minor_new = -1;
-
+ 
     sock_accept_evt->is_symlink = -1;
     sock_accept_evt->was_file_created = -1;
     sock_accept_evt->was_dir_removed = -1;

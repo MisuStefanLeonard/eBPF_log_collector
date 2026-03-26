@@ -50,7 +50,6 @@ int trace_process_exit(struct trace_event_raw_sched_process_template *ctx){
     u64 id, ts, *start_ts, start_time = 0;
     __u64 uid_gid = bpf_get_current_uid_gid();
 
-    /* get PID and TID of exiting thread/process */
     id = bpf_get_current_pid_tgid();
     tgid = id >> 32;
     pid  = id & 0xFFFFFFFF;
@@ -59,7 +58,6 @@ int trace_process_exit(struct trace_event_raw_sched_process_template *ctx){
     __u32 key = 0;
     __u32 *my_pid = bpf_map_lookup_elem(&self_pid, &key);
     struct task_struct* task = (struct task_struct*) bpf_get_current_task();
-    // ppid = BPF_CORE_READ(task, real_parent, tgid);
 
     __u8 *isPatternPidBlocked = bpf_map_lookup_elem(&blocked_patterns_pids, &pid);
     if (isPatternPidBlocked){
@@ -96,7 +94,6 @@ int trace_process_exit(struct trace_event_raw_sched_process_template *ctx){
 
 
     char comm[TYPE];
-    // get current comm
     bpf_get_current_comm(&comm, sizeof(comm));
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);
     if (isCommBlocked != NULL)
@@ -105,18 +102,15 @@ int trace_process_exit(struct trace_event_raw_sched_process_template *ctx){
     }
 
 
-    /* reserve sample from BPF ringbuf */
     TrackFileChanges *e = bpf_ringbuf_reserve(&file_events, sizeof(*e), 0);
     if (!e){
         bpf_printk("olxbpf_ringbuf_reserve failed for process exit event (sched_process_exit)\n");
         return 0;
     }
 
-    /* fill out the sample with data */
     start_time = BPF_CORE_READ(task, start_time);
     __u32 realPPID = BPF_CORE_READ(task, real_parent, tgid);
 
-    // task->mm->
     e->__generics.evt_type = EVENT_PROCESS_EXIT;
     e->__generics.duration_ns = bpf_ktime_get_ns() - start_time;
     
@@ -158,18 +152,13 @@ int trace_process_exit(struct trace_event_raw_sched_process_template *ctx){
     e->new_uid = e->old_uid;
     e->old_gid = e->__generics.gid;
     e->new_gid = e->old_gid;
-    // e->old_size = -1;
-    // e->new_size = -1;
-    /* Default file-related fields to -1 */
     e->old_mtime = -1;
     e->new_mtime = -1;
     e->old_ctime = -1;
     e->new_ctime = -1;
     e->old_atime = -1;
     e->new_atime = -1;
-    // e->comm_timestamp = -1;
 
-    /* Strings */
     __builtin_memcpy(e->file_type, "void", sizeof("void"));
     __builtin_memcpy(e->file_type_new, "void", sizeof("void"));
     __builtin_memcpy(e->new_filename, "void", sizeof("void"));
@@ -194,8 +183,6 @@ int trace_process_exit(struct trace_event_raw_sched_process_template *ctx){
     e->was_permission_changed = -1;
     e->was_owner_changed = -1;
     e->was_group_changed = -1;
-    // e->was_size_extended = -1;
-    // e->was_size_truncated = -1;
     e->was_creation_time_changed = -1;
     e->was_access_time_changed = -1;
     e->was_modified_time_changed = -1;
@@ -207,10 +194,6 @@ int trace_process_exit(struct trace_event_raw_sched_process_template *ctx){
     /* Device numbers */
     e->rdev_minor = -1;
     e->rdev_major = -1;
-    // e->i_bdev_major = -1;
-    // e->i_bdev_minor = -1;
-    // e->is_rdev_bdev_mismatch = -1;
-    // e->is_rdev_bdev_mismatch_new = -1;
 
     /* Link-related */
     e->is_target_dir_world_writable = -1;
@@ -226,9 +209,7 @@ int trace_process_exit(struct trace_event_raw_sched_process_template *ctx){
     /* New inode device numbers (rename/move) */
     e->rdev_minor_new = -1;
     e->rdev_major_new = -1;
-    // e->i_bdev_major_new = -1;
-    // e->i_bdev_minor_new = -1;
-    /* send data to user-space for post-processing */
+
     bpf_map_delete_elem(&active_file_pids, &pid);
     bpf_ringbuf_submit(e, 0);
     return 0;

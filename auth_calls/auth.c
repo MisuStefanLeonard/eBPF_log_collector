@@ -90,9 +90,6 @@ int BPF_UPROBE(pam_authenticate_enter, pam_handle_t *pamh, int flags){
     {
         if (*my_pid == pid)
         {
-            bpf_printk("PID STORED IN MAP -> %d \n", *my_pid);
-            bpf_printk("CURRENT PID -> %d \n", pid);
-            // bpf_ringbuf_discard(e, 0);
             return 0;
         }
     }
@@ -113,8 +110,6 @@ int BPF_UPROBE(pam_authenticate_enter, pam_handle_t *pamh, int flags){
         return 0;
     }
 
-    // de schimbat mapa din per_cpu hash in hash normal ssa fie pe acelasi cpuid]
-    // int cpuid = bpf_get_smp_processor_id();
     TrackFileChanges *event = bpf_map_lookup_elem(&pam_calls, &pid);
     if (!event){
         __u32 scratch_key = 0;
@@ -172,9 +167,6 @@ int BPF_UPROBE(pam_authenticate_enter, pam_handle_t *pamh, int flags){
     
     event->new_mode = -1;
     event->mode = -1;
-    // to complete uid,gid
-    // event->old_size = -1;
-    // event->new_size = 1;
     event->old_mtime = -1;
     event->new_mtime = -1;
     event->old_ctime = -1;
@@ -187,36 +179,30 @@ int BPF_UPROBE(pam_authenticate_enter, pam_handle_t *pamh, int flags){
     for (int i = 0; i < MAX_ARGS_CAPTURED; i++) {
         __builtin_memset(event->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
-    // bpf_probe_read_user_str(event->__sock.path,sizeof(event->__sock.path),(const void*)"void");
-    // bpf_probe_read_user_str(event->__sock.local_ipv6_socket_addr,sizeof(event->__sock.path),(const void*)"void");
+
     __builtin_memcpy(event->__sock.path, "void", sizeof("void"));
     __builtin_memcpy(event->__sock.local_ipv6_socket_addr, "void", sizeof("void"));
 
     // maybe file_type , idk
-    // bpf_probe_read_user_str(event->file_type,sizeof(event->file_type),(const void*)"void");
     __builtin_memcpy(event->file_type, "void", sizeof("void"));
     __builtin_memcpy(event->file_type_new, "void", sizeof("void"));
     
-    // bpf_probe_read_user_str(event->file_type_new,sizeof(event->file_type_new),(const void*)"void");
-    // ---
     event->is_sensitive_file = -1;
     event->was_suid_changed = -1;
     event->suid_set = -1;
     event->suid_cleared = -1;
-    // ---
     event->was_sgid_changed = -1;
     event->sgid_set = -1;
     event->sgid_cleared = -1;
-    // ---
+    
     event->was_sticky_changed = -1;
     event->sticky_set = -1;
     event->sticky_cleared = -1;
-    // ---
+
     event->was_permission_changed = -1;
     event->was_owner_changed = -1;
     event->was_group_changed = -1;
-    // event->was_size_extended = -1;
-    // event->was_size_truncated = -1;
+   
     event->was_file_modified = -1;
     event->was_creation_time_changed = -1;
     event->was_access_time_changed = -1;
@@ -246,15 +232,12 @@ int BPF_UPROBE(pam_authenticate_enter, pam_handle_t *pamh, int flags){
     event->dev_minor_new = 1;
     event->rdev_minor = -1;
     event->rdev_major = -1;
-    // event->i_bdev_major = -1;
-    // event->i_bdev_minor = -1;
     // ---
     event->is_target_dir_world_writable = -1;
     event->is_linked_file_SGID_or_SUID = -1;
     event->is_linked_to_sensitive_file = -1;
     event->is_cross_user_link = -1;
-    // bpf_probe_read_user_str(event->__generics.filename,sizeof(event->__generics.filename),(const void*)"void");
-    // bpf_probe_read_user_str(event->new_filename,sizeof(event->new_filename),(const void*)"void");
+  
     __builtin_memcpy(event->__generics.filename, "void", sizeof("void"));
     __builtin_memcpy(event->new_filename, "void", sizeof("void"));
     
@@ -264,9 +247,7 @@ int BPF_UPROBE(pam_authenticate_enter, pam_handle_t *pamh, int flags){
     event->is_current_dir_world_writable = -1;
     event->rdev_major_new = -1;
     event->rdev_minor_new = -1;
-    // event->i_bdev_major_new = -1;
-    // event->i_bdev_minor_new = -1;
-
+   
     return 0;
 
 }
@@ -293,7 +274,6 @@ int BPF_URETPROBE(pam_authenticate_exit, int ret){
     event->__generics.exit_code = ret;
 
 
-    // if success
     if (ret == 0){
         bpf_printk("Succesfully auth for pid [%d]\n" , pid);
         event->__auth.is_success = 1;
@@ -353,7 +333,6 @@ __u32 key = 0;
             bpf_printk("PID STORED IN MAP -> %d \n", *my_pid);
             bpf_printk("CURRENT PID -> %d \n", pid);
             bpf_printk("PID OF CURRENT EXECUTABLE (sys_enter_openat)\n");
-            // bpf_ringbuf_discard(e, 0);
             return 0;
         }
     }
@@ -433,8 +412,6 @@ __u32 key = 0;
     event->new_mode = -1;
     event->mode = -1;
     // to complete uid,gid
-    // event->old_size = -1;
-    // event->new_size = 1;
     event->old_mtime = -1;
     event->new_mtime = -1;
     event->old_ctime = -1;
@@ -467,8 +444,6 @@ __u32 key = 0;
     event->was_permission_changed = -1;
     event->was_owner_changed = -1;
     event->was_group_changed = -1;
-    // event->was_size_extended = -1;
-    // event->was_size_truncated = -1;
     event->was_file_modified = -1;
     event->was_creation_time_changed = -1;
     event->was_access_time_changed = -1;
@@ -499,8 +474,7 @@ __u32 key = 0;
     event->dev_minor_new = 1;
     event->rdev_minor = -1;
     event->rdev_major = -1;
-    // event->i_bdev_major = -1;
-    // event->i_bdev_minor = -1;
+
     // ---
     event->is_target_dir_world_writable = -1;
     event->is_linked_file_SGID_or_SUID = -1;
@@ -513,8 +487,7 @@ __u32 key = 0;
     event->is_current_dir_world_writable = -1;
     event->rdev_major_new = -1;
     event->rdev_minor_new = -1;
-    // event->i_bdev_major_new = -1;
-    // event->i_bdev_minor_new = -1;
+  
 
     return 0;
 }
@@ -591,9 +564,6 @@ __u32 key = 0;
     {
         if (*my_pid == pid)
         {
-            bpf_printk("PID STORED IN MAP -> %d \n", *my_pid);
-            bpf_printk("CURRENT PID -> %d \n", pid);
-            // bpf_ringbuf_discard(e, 0);
             return 0;
         }
     }
@@ -671,9 +641,7 @@ __u32 key = 0;
     
     event->new_mode = -1;
     event->mode = -1;
-    // to complete uid,gid
-    // event->old_size = -1;
-    // event->new_size = 1;
+
     event->old_mtime = -1;
     event->new_mtime = -1;
     event->old_ctime = -1;
@@ -706,8 +674,7 @@ __u32 key = 0;
     event->was_permission_changed = -1;
     event->was_owner_changed = -1;
     event->was_group_changed = -1;
-    // event->was_size_extended = -1;
-    // event->was_size_truncated = -1;
+   
     event->was_file_modified = -1;
     event->was_creation_time_changed = -1;
     event->was_access_time_changed = -1;
@@ -737,8 +704,7 @@ __u32 key = 0;
     event->dev_minor_new = 1;
     event->rdev_minor = -1;
     event->rdev_major = -1;
-    // event->i_bdev_major = -1;
-    // event->i_bdev_minor = -1;
+   
     // ---
     event->is_target_dir_world_writable = -1;
     event->is_linked_file_SGID_or_SUID = -1;
@@ -751,9 +717,7 @@ __u32 key = 0;
     event->is_current_dir_world_writable = -1;
     event->rdev_major_new = -1;
     event->rdev_minor_new = -1;
-    // event->i_bdev_major_new = -1;
-    // event->i_bdev_minor_new = -1;
-
+    
     return 0;
 }
 

@@ -3,3 +3,5 @@
 vmlinux
 events.csv
 .vscode/
+dataGathered/
+dataGatheredForEventMatching/

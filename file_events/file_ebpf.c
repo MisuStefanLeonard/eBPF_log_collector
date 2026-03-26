@@ -48,7 +48,7 @@ struct
 struct
 {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 4096 * 512 * 32); // 8mb
+    __uint(max_entries, 4096 * 512 * 32); 
 } file_events SEC(".maps");
 
 struct
@@ -160,11 +160,21 @@ static int iterate_cb(u32 i, void *data)
 static char iterate(const char *str)
 {
     struct iterate_ctx ctx = {};
-    // __builtin_memset(&ctx, 0, sizeof(ctx));
     ctx.match_found = 0;
     ctx.filename = str;
     bpf_loop(LITTLE_MAP_SIZE, iterate_cb, &ctx, 0);
     return ctx.match_found;
+}
+
+static __always_inline int block_pid_and_drop(__u32 pid) {
+    __u8 temp = 1;
+    int update = bpf_map_update_elem(&blocked_patterns_pids, &pid, &temp, BPF_ANY);
+    if (update < 0) {
+        bpf_printk("brbrFailed to update blocked_patterns_pids <pid %d >", pid);
+    } else {
+        bpf_printk("brbrSuccesfully blocked_patterns_pids <pid %d >", pid);
+    }
+    return 0; 
 }
 
 SEC("fexit/vfs_read")
@@ -322,32 +332,38 @@ int BPF_PROG(check_file_open, struct file *file)
         }
     }
 
-    char comm[TYPE];
+    __u8 *is_pid_blocked = bpf_map_lookup_elem(&blocked_patterns_pids, &pid);
+    if (is_pid_blocked) {
+        return 0; 
+    }
 
+    char comm[TYPE];
     bpf_get_current_comm(comm, sizeof(comm));
-    // bpf_printk("Comm %s\n", comm);
+
+
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);
     if (isCommBlocked != NULL)
     {
         return 0;
     }
 
-    char isMatch = iterate(comm);
-    if (isMatch == 1)
-    {
-        u8 temp = 1;
-        int update = bpf_map_update_elem(&blocked_patterns_pids, &pid, &temp, BPF_ANY);
-        if (update < 0) {
-            bpf_printk("brbrFailed to update blocked_patterns_pids <pid %d >", pid);
-        }else{
-            bpf_printk("brbrSuccesfully blocked_patterns_pids <pid %d >", pid);
-        }
-        return 0;
+    // char isMatch = iterate(comm);
+    // if (isMatch == 1)
+    // {
+    //     u8 temp = 1;
+    //     int update = bpf_map_update_elem(&blocked_patterns_pids, &pid, &temp, BPF_ANY);
+    //     if (update < 0) {
+    //         bpf_printk("brbrFailed to update blocked_patterns_pids <pid %d >", pid);
+    //     }else{
+    //         bpf_printk("brbrSuccesfully blocked_patterns_pids <pid %d >", pid);
+    //     }
+    //     return 0;
+    // }
+    if (iterate(comm) == 1) {
+        return block_pid_and_drop(pid);
     }
 
     __u32 mode = BPF_CORE_READ(file, f_inode, i_mode);
-    // struct dentry *path = BPF_CORE_READ(file, f_path.dentry);
-    // struct path *path = __builtin_preserve_access_index(&file->f_path);
     char name[MAX_CHAR_LEN] = {};
     bpf_core_read_str(name, sizeof(name), file->f_path.dentry->d_name.name);
     __u8 *isFilenameBlocked = bpf_map_lookup_elem(&blocked_filenames, name);
@@ -356,26 +372,28 @@ int BPF_PROG(check_file_open, struct file *file)
         bpf_printk("bbBlocked filename at check_file_open << %s >> \n", name);
         return 0;
     }
-
-    // if (__builtin_strcmp(comm,"ps") )
     
+    // if (__builtin_strcmp(name, "trace_pipe") != 0 && __builtin_strcmp(name, "\0") != 0)
+    // {
+    //     char isMatch = iterate(name);
+    //     if (isMatch == 1)
+    //     {
+    //         u8 temp = 1;
+    //         int update = bpf_map_update_elem(&blocked_patterns_pids, &pid, &temp, BPF_ANY);
+    //         if (update < 0) {
+    //             bpf_printk("brbrFailed to update blocked_patterns_pids <pid %d >", pid);
+    //         }else{
+    //             bpf_printk("brbrSuccesfully blocked_patterns_pids <pid %d >", pid);
+    //         }
+    //         return 0;
+    //     }
 
-
-    if (__builtin_strcmp(name, "trace_pipe") != 0 && __builtin_strcmp(name, "\0") != 0)
+    // }
+    if (name[0] != '\0' && __builtin_strcmp(name, "trace_pipe") != 0)
     {
-        char isMatch = iterate(name);
-        if (isMatch == 1)
-        {
-            u8 temp = 1;
-            int update = bpf_map_update_elem(&blocked_patterns_pids, &pid, &temp, BPF_ANY);
-            if (update < 0) {
-                bpf_printk("brbrFailed to update blocked_patterns_pids <pid %d >", pid);
-            }else{
-                bpf_printk("brbrSuccesfully blocked_patterns_pids <pid %d >", pid);
-            }
-            return 0;
+        if (iterate(name) == 1) {
+            return block_pid_and_drop(pid);
         }
-
     }
 
 
@@ -428,8 +446,8 @@ int BPF_PROG(check_file_open, struct file *file)
     bpf_probe_read_kernel_str(file_event->__generics.filename, sizeof(file_event->__generics.filename), name);
     bpf_probe_read_kernel_str(file_event->new_filename, sizeof(file_event->new_filename), name);
     file_event->fptr = (__u64)file;
-    file_event->has_emitted_read = 0;   // Reset flag
-    file_event->has_emitted_write = 0;  // Reset flag
+    file_event->has_emitted_read = 0;   
+    file_event->has_emitted_write = 0; 
 
     file_event->__auth.is_success = -1;
     file_event->__auth.is_switching_user = -1;
@@ -441,13 +459,13 @@ int BPF_PROG(check_file_open, struct file *file)
     __builtin_memcpy(file_event->__auth.rname, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.login_type, "void", sizeof("void"));
 
-    // #pragma unroll
+
     for (int i = 0; i < MAX_ARGS_CAPTURED; i++)
     {
         __builtin_memset(file_event->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // socket default
+    
     file_event->__sock.protocol_family = -1;
     file_event->__sock.socket_type = -1;
     file_event->__sock.protocol = -1;
@@ -577,13 +595,12 @@ int BPF_PROG(check_file_open, struct file *file)
     // file_event->is_rdev_bdev_mismatch = -1;
     // file_event->is_rdev_bdev_mismatch_new = -1;
 
-    /* Link-related */
     file_event->is_target_dir_world_writable = -1;
     file_event->is_linked_file_SGID_or_SUID = -1;
     file_event->is_linked_to_sensitive_file = -1;
     file_event->is_cross_user_link = -1;
 
-    /* Symlink / directory / rename indicators */
+    
     file_event->is_symlink = -1;
     file_event->was_dir_removed = -1;
     file_event->is_current_dir_world_writable = -1;
@@ -594,7 +611,6 @@ int BPF_PROG(check_file_open, struct file *file)
     // file_event->i_bdev_major_new = -1;
     // file_event->i_bdev_minor_new = -1;
 
-    // unsigned char is_sensitive_file ~ to add from userspace
 
     // bpf_ringbuf_submit(file_event, 0);
     return 0;
@@ -630,6 +646,11 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
         }
     }
 
+     __u8 *is_pid_blocked = bpf_map_lookup_elem(&blocked_patterns_pids, &pid);
+    if (is_pid_blocked) {
+        return 0; 
+    }
+
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
@@ -639,17 +660,21 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
         return 0;
     }
 
-    char isMatch = iterate(comm);
-    if (isMatch == 1)
-    {
-        u8 temp = 1;
-        int update = bpf_map_update_elem(&blocked_patterns_pids, &pid, &temp, BPF_ANY);
-        if (update < 0) {
-            bpf_printk("brbrFailed to update blocked_patterns_pids <pid %d >", pid);
-        }else{
-            bpf_printk("brbrSuccesfully blocked_patterns_pids <pid %d >", pid);
-        }
-        return 0;
+    // char isMatch = iterate(comm);
+    // if (isMatch == 1)
+    // {
+    //     u8 temp = 1;
+    //     int update = bpf_map_update_elem(&blocked_patterns_pids, &pid, &temp, BPF_ANY);
+    //     if (update < 0) {
+    //         bpf_printk("brbrFailed to update blocked_patterns_pids <pid %d >", pid);
+    //     }else{
+    //         bpf_printk("brbrSuccesfully blocked_patterns_pids <pid %d >", pid);
+    //     }
+    //     return 0;
+    // }
+
+    if (iterate(comm) == 1) {
+        return block_pid_and_drop(pid);
     }
 
     char name[MAX_CHAR_LEN];
@@ -662,13 +687,10 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
         return 0;
     }
     
-    if (__builtin_strcmp(name, "trace_pipe") != 0 && __builtin_strcmp(name, "\0") != 0)
+    if (name[0] != '\0' && __builtin_strcmp(name, "trace_pipe") != 0)
     {
-        char isMatch = iterate(name);
-        if (isMatch == 1)
-        {
-            bpf_printk("ssBlocked filename %s --- %d", name, isMatch);
-            return 0;
+        if (iterate(name) == 1) {
+            return block_pid_and_drop(pid);
         }
     }
 
@@ -697,29 +719,8 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
         file_event->was_success = 1;
     }
     file_event->comm_timestamp = bpf_ktime_get_tai_ns();
-    // size modifications
-    // file_event->old_size = BPF_CORE_READ(dentry, d_inode, i_size);
-    // file_event->new_size = BPF_CORE_READ(iattr, ia_size);
     file_event->was_file_modified = 1;
-    // if (valid & ATTR_SIZE)
-    // {
-    //     if (file_event->old_size > file_event->new_size)
-    //     {
-    //         file_event->was_size_extended = 1;
-    //         file_event->was_size_truncated = 0;
-    //     }
-    //     else if (file_event->old_size < file_event->new_size)
-    //     {
-    //         file_event->was_size_extended = 0;
-    //         file_event->was_size_truncated = 1;
-    //     }
-    //     else
-    //     {
-    //         file_event->was_size_extended = 0;
-    //         file_event->was_size_truncated = 0;
-    //     }
-    // }
-    // permission
+  
     file_event->mode = BPF_CORE_READ(dentry, d_inode, i_mode);
     file_event->new_mode = BPF_CORE_READ(iattr, ia_mode);
     if (valid & ATTR_MODE)
@@ -752,8 +753,7 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
     {
         file_event->was_group_changed = 0;
     }
-    // timestamp
-    // --- Timestamp fields ---
+    
     file_event->old_atime =
         BPF_CORE_READ(dentry, d_inode, __i_atime.tv_nsec) +
         (BPF_CORE_READ(dentry, d_inode, __i_atime.tv_sec) * 1000000000ULL);
@@ -778,9 +778,6 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
         BPF_CORE_READ(iattr, ia_ctime.tv_nsec) +
         (BPF_CORE_READ(iattr, ia_ctime.tv_sec) * 1000000000ULL);
 
-    
-
-    // Check which timestamps were changed
     if (valid & ATTR_ATIME)
         file_event->was_access_time_changed = 1;
     else
@@ -795,12 +792,12 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
         file_event->was_creation_time_changed = 1;
     else
         file_event->was_creation_time_changed = 0;
-    // command
+   
     bpf_probe_read_kernel_str(file_event->__generics.comm, sizeof(file_event->__generics.comm), comm);
-    // filename
+ 
     bpf_probe_read_kernel_str(file_event->__generics.filename, sizeof(file_event->__generics.filename), name);
     bpf_probe_read_kernel_str(file_event->new_filename, sizeof(file_event->new_filename), name);
-    // SGID and SUID
+   
     file_event->suid_set = !(file_event->mode & _S_ISUID) && (file_event->new_mode & _S_ISUID);
     file_event->suid_cleared = (file_event->mode & _S_ISUID) && !(file_event->new_mode & _S_ISUID);
     file_event->was_suid_changed = file_event->suid_set || file_event->suid_cleared;
@@ -809,7 +806,7 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
     file_event->sgid_cleared = (file_event->mode & _S_ISGID) && !(file_event->new_mode & _S_ISGID);
     file_event->was_sgid_changed = file_event->sgid_set || file_event->sgid_cleared;
 
-    // sticky_bit
+
     file_event->was_sticky_changed =
         ((file_event->mode & _S_ISVTX) != (file_event->new_mode & _S_ISVTX));
 
@@ -823,14 +820,14 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
     file_event->__auth.is_switching_user = -1;
     file_event->__auth.is_switching_root = -1;
     file_event->__auth.is_changing_password = -1;
-    // to add if the user is from root
+   
     file_event->__auth.is_root_command = -1;
     __builtin_memcpy(file_event->__auth.name, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rhost, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rname, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.login_type, "void", sizeof("void"));
 
-// #pragma unroll
+
     for (int i = 0; i < MAX_ARGS_CAPTURED; i++)
     {
         __builtin_memset(file_event->__generics.argv[i], 0, MAX_ARGV_LEN);
@@ -878,7 +875,6 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
         __builtin_memcpy(file_event->file_type_new, "UNKNOWN", sizeof("UNKNOWN"));
     }
 
-    // socket default
     file_event->__sock.protocol_family = -1;
     file_event->__sock.socket_type = -1;
     file_event->__sock.protocol = -1;
@@ -898,7 +894,7 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
     __builtin_memcpy(file_event->__sock.ipv6, "void", sizeof("void"));
     __builtin_memcpy(file_event->__sock.local_ipv6_socket_addr, "void", sizeof("void"));
     dev_t dev = BPF_CORE_READ(dentry, d_sb,s_dev);
-    /* Device numbers */
+
     file_event->dev_major = dev >> 20;
     file_event->dev_minor = dev & ((1 << 20) - 1);
     file_event->dev_major_new = file_event->dev_major;
@@ -907,33 +903,24 @@ int BPF_PROG(inode_setattr_u, struct dentry *dentry, struct iattr *iattr)
     file_event->rdev_minor = rdev >> 20;
     file_event->rdev_major = rdev & ((1 << 20) - 1);
     file_event->inode_number = BPF_CORE_READ(dentry, d_inode,i_ino);
-    // file_event->i_bdev_major = -1;
-    // file_event->i_bdev_minor = -1;
-    // file_event->is_rdev_bdev_mismatch = -1;
-    // file_event->is_rdev_bdev_mismatch_new = -1;
-
-    /* Link-related */
+   
     file_event->is_target_dir_world_writable = -1;
     file_event->is_linked_file_SGID_or_SUID = -1;
     file_event->is_linked_to_sensitive_file = -1;
     file_event->is_cross_user_link = -1;
 
-    /* Symlink / directory / rename indicators */
+   
     file_event->is_symlink = -1;
     file_event->was_dir_removed = -1;
     file_event->is_current_dir_world_writable = -1;
 
-    /* New inode device numbers (rename/move) */
     file_event->rdev_minor_new = -1;
     file_event->rdev_major_new = -1;
-    // file_event->i_bdev_major_new = -1;
-    // file_event->i_bdev_minor_new = -1;
     file_event->do_not_update_atime = -1;
 
     bpf_ringbuf_submit(file_event, 0);
     return 0;
 
-    // nu uita cu ls -l /proc/<pid>/cwd luam calea intreaga ( ce tare , nu stiam)
 }
 
 SEC("lsm/inode_create")
@@ -968,11 +955,9 @@ int BPF_PROG(inode_create, struct inode *inode, struct dentry *dentry, umode_t m
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
-    // if(e->comm){
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);
     if (isCommBlocked != NULL)
     {
-        // bpf_ringbuf_discard(e,0);
         return 0;
     }
 
@@ -1001,12 +986,10 @@ int BPF_PROG(inode_create, struct inode *inode, struct dentry *dentry, umode_t m
     if (!file_event)
     {
         bpf_printk("bpf_ringbuf_reserve failed for file event (lsm/inode_create) \n");
-        // bpf_ringbuf_discard(&e, 0);
         return 0;
     }
 
     struct task_struct *task = (struct task_struct *)bpf_get_current_task();
-    // __u32 ppid = BPF_CORE_READ(task, real_parent, tgid);
     __u32 realPPID = BPF_CORE_READ(task, real_parent, tgid);
 
     file_event->__generics.evt_type = EVENT_INODE_CREATE;
@@ -1021,9 +1004,7 @@ int BPF_PROG(inode_create, struct inode *inode, struct dentry *dentry, umode_t m
     {
         file_event->was_success = 1;
     }
-    // command
     bpf_probe_read_kernel_str(file_event->__generics.comm, sizeof(file_event->__generics.comm), comm);
-    // filename
     bpf_probe_read_kernel_str(file_event->__generics.filename, sizeof(file_event->__generics.filename), name);
     bpf_probe_read_kernel_str(file_event->new_filename, sizeof(file_event->new_filename), name);
 
@@ -1032,10 +1013,6 @@ int BPF_PROG(inode_create, struct inode *inode, struct dentry *dentry, umode_t m
     file_event->old_gid = BPF_CORE_READ(dentry, d_inode, i_gid).val;
     file_event->new_uid = file_event->old_uid;
     file_event->new_gid = file_event->old_gid;
-    // file_event->old_size = BPF_CORE_READ(dentry, d_inode, i_size);
-    // file_event->new_size = file_event->old_size;
-    // file_event->was_size_extended = -1;
-    // file_event->was_size_truncated = -1;
     file_event->was_file_modified = -1;
     file_event->new_mode = mode;
     file_event->mode = mode;
@@ -1046,12 +1023,11 @@ int BPF_PROG(inode_create, struct inode *inode, struct dentry *dentry, umode_t m
     struct timespec64 old_mtime = {};
     struct timespec64 old_ctime = {};
 
-    // Read old timestamps from inode (works for kernel >=5.12)
+
     bpf_core_read(&old_atime, sizeof(old_atime), &dentry->d_inode->__i_atime);
     bpf_core_read(&old_mtime, sizeof(old_mtime), &dentry->d_inode->__i_mtime);
     bpf_core_read(&old_ctime, sizeof(old_ctime), &dentry->d_inode->__i_ctime);
 
-    // Convert to single u64 nanoseconds for uniform logging / ML
     file_event->old_atime = old_atime.tv_nsec + (old_atime.tv_sec * 1000000000ULL);
     file_event->new_atime = file_event->old_atime;
 
@@ -1068,15 +1044,8 @@ int BPF_PROG(inode_create, struct inode *inode, struct dentry *dentry, umode_t m
     file_event->dev_major = dev >> 20;
     file_event->dev_minor = dev & ((1 << 20) - 1);
     file_event->inode_number = BPF_CORE_READ(dentry, d_inode,i_ino);
-    // __u16 mode = BPF_CORE_READ(inode, i_mode);
     file_event->rdev_major = rdev_major;
     file_event->rdev_minor = rdev_minor;
-    // file_event->i_bdev_major = 0;
-    // file_event->i_bdev_minor = 0;
-    // file_event->i_bdev_major_new = 0;
-    // file_event->i_bdev_minor_new = 0;
-    // file_event->is_rdev_bdev_mismatch = -1;
-    // file_event->is_rdev_bdev_mismatch_new = -1;
 
     if ((mode & _S_IFMT) == _S_IFSOCK)
     {
@@ -1092,28 +1061,8 @@ int BPF_PROG(inode_create, struct inode *inode, struct dentry *dentry, umode_t m
 
     if ((mode & _S_IFMT) == _S_IFBLK)
     {
-        // struct bdev_inode *bdi = (struct bdev_inode *)inode;
-        // dev_t bdev_dev = BPF_CORE_READ(&bdi->bdev, bd_dev);
-        // __u32 bdev_major = bdev_dev >> 20;
-        // __u32 bdev_minor = bdev_dev & ((1 << 20) - 1);
-        // file_event->i_bdev_major = bdev_major;
-        // file_event->i_bdev_minor = bdev_minor;
-        // file_event->i_bdev_major_new = file_event->i_bdev_major;
-        // file_event->i_bdev_minor_new = file_event->i_bdev_minor;
-        // file_event->is_block_device = 1;
         __builtin_memcpy(file_event->file_type, "BLOCK_DEVICE", sizeof("BLOCK_DEVICE"));
         __builtin_memcpy(file_event->file_type_new, "BLOCK_DEVICE", sizeof("BLOCK_DEVICE"));
-
-        // if ((file_event->rdev_major != bdev_major || file_event->rdev_minor != bdev_minor))
-        // {
-        //     file_event->is_rdev_bdev_mismatch = 1;
-        //     file_event->is_rdev_bdev_mismatch_new = 1;
-        // }
-        // else
-        // {
-        //     file_event->is_rdev_bdev_mismatch = 0;
-        //     file_event->is_rdev_bdev_mismatch_new = 0;
-        // }
     }
 
     file_event->rdev_minor_new = file_event->rdev_minor;
@@ -1123,19 +1072,18 @@ int BPF_PROG(inode_create, struct inode *inode, struct dentry *dentry, umode_t m
     file_event->__auth.is_switching_user = -1;
     file_event->__auth.is_switching_root = -1;
     file_event->__auth.is_changing_password = -1;
-    // to add if the user is from root
+  
     file_event->__auth.is_root_command = -1;
     __builtin_memcpy(file_event->__auth.name, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rhost, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rname, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.login_type, "void", sizeof("void"));
-// #pragma unroll
+
     for (int i = 0; i < MAX_ARGS_CAPTURED; i++)
     {
         __builtin_memset(file_event->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // socket default
     file_event->__sock.protocol_family = -1;
     file_event->__sock.socket_type = -1;
     file_event->__sock.protocol = -1;
@@ -1155,15 +1103,12 @@ int BPF_PROG(inode_create, struct inode *inode, struct dentry *dentry, umode_t m
     __builtin_memcpy(file_event->__sock.ipv6, "void", sizeof("void"));
     __builtin_memcpy(file_event->__sock.local_ipv6_socket_addr, "void", sizeof("void"));
 
-    // unsigned char is_sensitive_file ~ to add from userspace
-
-    /* Link-related */
     file_event->is_target_dir_world_writable = -1;
     file_event->is_linked_file_SGID_or_SUID = -1;
     file_event->is_linked_to_sensitive_file = -1;
     file_event->is_cross_user_link = -1;
 
-    /* Symlink / directory / rename indicators */
+   
     file_event->is_symlink = -1;
     file_event->was_dir_removed = -1;
     file_event->is_current_dir_world_writable = -1;
@@ -1205,11 +1150,9 @@ int BPF_PROG(inode_link, struct dentry *dentry, struct inode *inode, struct dent
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
-    // if(e->comm){
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);
     if (isCommBlocked != NULL)
     {
-        // bpf_ringbuf_discard(e,0);
         return 0;
     }
 
@@ -1226,20 +1169,15 @@ int BPF_PROG(inode_link, struct dentry *dentry, struct inode *inode, struct dent
     __u8 *isFilenameBlocked = bpf_map_lookup_elem(&blocked_filenames, name);
     if (isFilenameBlocked != NULL)
     {
-        // bpf_printk("Blocked filename << %s >> \n", name);
         bpf_printk("Blocked filename at inode_link << %s >> \n", name);
         return 0;
     }
 
-    
-
-    // TODO de rulat make clean , make
 
     TrackFileChanges *file_event = bpf_ringbuf_reserve(&file_events, sizeof(*file_event), 0);
     if (!file_event)
     {
         bpf_printk("bpf_ringbuf_reserve failed for file event (lsm/inode_link) \n");
-        // bpf_ringbuf_discard(&e, 0);
         return 0;
     }
 
@@ -1258,42 +1196,24 @@ int BPF_PROG(inode_link, struct dentry *dentry, struct inode *inode, struct dent
     {
         file_event->was_success = 1;
     }
-    // command
     bpf_probe_read_kernel_str(file_event->__generics.comm, sizeof(file_event->__generics.comm), comm);
-    // filename
     bpf_probe_read_kernel_str(file_event->__generics.filename, sizeof(file_event->__generics.filename), name);
     bpf_probe_read_kernel_str(file_event->new_filename, sizeof(file_event->new_filename), name);
     file_event->was_file_created = 1;
-    file_event->old_uid = BPF_CORE_READ(dentry, d_inode, i_uid).val; // per old dir
-    file_event->old_gid = BPF_CORE_READ(dentry, d_inode, i_gid).val; // per old dir
-    // file_event->new_uid = file_event->old_uid;
-    // file_event->new_gid = file_event->old_gid;
-    file_event->new_uid = BPF_CORE_READ(dentry_new, d_inode, i_uid).val; // per dir
-    file_event->new_gid = BPF_CORE_READ(dentry_new, d_inode, i_uid).val; // per dir
-    // file_event->old_size = BPF_CORE_READ(dentry, d_inode, i_size);
-    // file_event->new_size = file_event->old_size;
+    file_event->old_uid = BPF_CORE_READ(dentry, d_inode, i_uid).val; 
+    file_event->old_gid = BPF_CORE_READ(dentry, d_inode, i_gid).val;
+
+    file_event->new_uid = BPF_CORE_READ(dentry_new, d_inode, i_uid).val; 
+    file_event->new_gid = BPF_CORE_READ(dentry_new, d_inode, i_uid).val; 
     file_event->was_file_modified = -1;
-    // file_event->was_size_extended = -1;
-    // file_event->was_size_truncated = -1;
-    // file_event->i_bdev_major = 0;
-    // file_event->i_bdev_minor = 0;
-    // file_event->i_bdev_major_new = 0;
-    // file_event->i_bdev_minor_new = 0;
-    // file_event->is_rdev_bdev_mismatch = -1;
-    // file_event->is_rdev_bdev_mismatch_new = -1;
-
-    
-
     struct timespec64 old_atime = {};
     struct timespec64 old_mtime = {};
     struct timespec64 old_ctime = {};
 
-    // Read old timestamps from inode (works for kernel >=5.12)
     bpf_core_read(&old_atime, sizeof(old_atime), &dentry->d_inode->__i_atime);
     bpf_core_read(&old_mtime, sizeof(old_mtime), &dentry->d_inode->__i_mtime);
     bpf_core_read(&old_ctime, sizeof(old_ctime), &dentry->d_inode->__i_ctime);
 
-    // Convert to single u64 nanoseconds for uniform logging / ML
     file_event->old_atime = old_atime.tv_nsec + (old_atime.tv_sec * 1000000000ULL);
     file_event->new_atime = file_event->old_atime;
 
@@ -1318,42 +1238,24 @@ int BPF_PROG(inode_link, struct dentry *dentry, struct inode *inode, struct dent
 
     if ((mode & _S_IFMT) == _S_IFSOCK)
     {
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "SOCKET");
         __builtin_memcpy(file_event->file_type, "SOCKET", sizeof("SOCKET"));
         __builtin_memcpy(file_event->file_type_new, "SOCKET", sizeof("SOCKET"));
     }
     if ((mode & _S_IFMT) == _S_IFREG)
     {
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "REGULAR");
         __builtin_memcpy(file_event->file_type, "REGULAR", sizeof("REGULAR"));
         __builtin_memcpy(file_event->file_type_new, "REGULAR", sizeof("REGULAR"));
     }
     if ((mode & _S_IFMT) == _S_IFDIR)
     {
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "DIR");
         __builtin_memcpy(file_event->file_type, "DIR", sizeof("DIR"));
         __builtin_memcpy(file_event->file_type_new, "DIR", sizeof("DIR"));
     }
 
     if ((mode & _S_IFMT) == _S_IFBLK)
     {
-        // struct bdev_inode *bdi = (struct bdev_inode *)inode;
-        // dev_t bdev_dev = BPF_CORE_READ(&bdi->bdev, bd_dev);
-        // __u32 bdev_major = bdev_dev >> 20;
-        // __u32 bdev_minor = bdev_dev & ((1 << 20) - 1);
-        // file_event->i_bdev_major = bdev_major;
-        // file_event->i_bdev_minor = bdev_minor;
-        // file_event->i_bdev_major_new = file_event->i_bdev_major;
-        // file_event->i_bdev_minor_new = file_event->i_bdev_minor;
-        // file_event->is_block_device = 1;
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "BLOCK_DEVICE");
         __builtin_memcpy(file_event->file_type, "BLOCK_DEVICE", sizeof("BLOCK_DEVICE"));
         __builtin_memcpy(file_event->file_type_new, "BLOCK_DEVICE", sizeof("BLOCK_DEVICE"));
-
-        // if ((file_event->rdev_major != bdev_major || file_event->rdev_minor != bdev_minor))
-        // {
-        //     file_event->is_rdev_bdev_mismatch = 1;
-        // }
     }
 
     file_event->rdev_minor_new = file_event->rdev_minor;
@@ -1378,27 +1280,22 @@ int BPF_PROG(inode_link, struct dentry *dentry, struct inode *inode, struct dent
 
     file_event->is_cross_user_link = (src_uid.val != tgt_uid.val) ? 1 : 0;
 
-    // CHECK IF IT IS LINKED TO SENSITIVE FILE
-    // unsigned char is_linked_to_sensitive_file ~ to add from userspace
-    // unsigned char is_sensitive_file ~ to add from userspace
-
     file_event->__auth.is_success = -1;
     file_event->__auth.is_switching_user = -1;
     file_event->__auth.is_switching_root = -1;
     file_event->__auth.is_changing_password = -1;
-    // to add if the user is from root
+
     file_event->__auth.is_root_command = -1;
     __builtin_memcpy(file_event->__auth.name, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rhost, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rname, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.login_type, "void", sizeof("void"));
-// #pragma unroll
     for (int i = 0; i < MAX_ARGS_CAPTURED; i++)
     {
         __builtin_memset(file_event->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // socket default
+    
     file_event->__sock.protocol_family = -1;
     file_event->__sock.socket_type = -1;
     file_event->__sock.protocol = -1;
@@ -1418,12 +1315,7 @@ int BPF_PROG(inode_link, struct dentry *dentry, struct inode *inode, struct dent
     __builtin_memcpy(file_event->__sock.ipv6, "void", sizeof("void"));
     __builtin_memcpy(file_event->__sock.local_ipv6_socket_addr, "void", sizeof("void"));
 
-    // unsigned char is_sensitive_file ~ to add from userspace
-
-    /* Link-related */
     file_event->is_linked_to_sensitive_file = -1;
-
-    /* Symlink / directory / rename indicators */
     file_event->is_symlink = -1;
     file_event->was_dir_removed = -1;
     file_event->do_not_update_atime = -1;
@@ -1438,7 +1330,6 @@ int BPF_PROG(inode_link, struct dentry *dentry, struct inode *inode, struct dent
 SEC("lsm/inode_symlink")
 int BPF_PROG(inode_symlink, struct inode *inode, struct dentry *dentry, const char *symlink_path)
 {
-    // const char unsigned *filename = BPF_CORE_READ(dentry, d_name.name);
     __u32 key = 0;
     __u32 *my_pid;
 
@@ -1467,11 +1358,9 @@ int BPF_PROG(inode_symlink, struct inode *inode, struct dentry *dentry, const ch
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
-    // if(e->comm){
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);
     if (isCommBlocked != NULL)
     {
-        // bpf_ringbuf_discard(e,0);
         return 0;
     }
 
@@ -1487,7 +1376,7 @@ int BPF_PROG(inode_symlink, struct inode *inode, struct dentry *dentry, const ch
     __u8 *isFilenameBlocked = bpf_map_lookup_elem(&blocked_filenames, symlink_path_local);
     if (isFilenameBlocked != NULL)
     {
-        // bpf_printk("Blocked filename << %s >> \n", symlink_path_local);
+
         bpf_printk("Blocked filename at inode_symlink << %s >> \n", symlink_path_local);
         return 0;
     }
@@ -1496,7 +1385,6 @@ int BPF_PROG(inode_symlink, struct inode *inode, struct dentry *dentry, const ch
     if (!file_event)
     {
         bpf_printk("bpf_ringbuf_reserve failed for file event (lsm/inode_symlink) \n");
-        // bpf_ringbuf_discard(&e, 0);
         return 0;
     }
 
@@ -1511,39 +1399,24 @@ int BPF_PROG(inode_symlink, struct inode *inode, struct dentry *dentry, const ch
     file_event->__generics.uid = (__u32)bpf_get_current_uid_gid();
     file_event->__generics.gid = (__u32)(bpf_get_current_uid_gid() >> 32);
     file_event->__generics.exit_code = (BPF_CORE_READ(task, exit_code) >> 8) & 0xff;
-    // command
     bpf_probe_read_kernel_str(file_event->__generics.comm, sizeof(file_event->__generics.comm), comm);
-    // filename
-    // bpf_core_read_str(file_event->__generics.filename, sizeof(file_event->__generics.filename), filename);
 
     file_event->was_file_created = 1;
     file_event->old_uid = BPF_CORE_READ(dentry, d_inode, i_uid).val;
     file_event->old_gid = BPF_CORE_READ(dentry, d_inode, i_gid).val;
     file_event->new_uid = file_event->old_uid;
     file_event->new_gid = file_event->old_gid;
-    // file_event->old_size = BPF_CORE_READ(dentry, d_inode, i_size);
-    // file_event->new_size = file_event->old_size;
-    // file_event->was_size_extended = -1;
-    // file_event->was_size_truncated = -1;
     file_event->was_file_modified = -1;
-    // file_event->i_bdev_major = 0;
-    // file_event->i_bdev_minor = 0;
-    // file_event->i_bdev_major_new = 0;
-    // file_event->i_bdev_minor_new = 0;
-    // file_event->is_rdev_bdev_mismatch = -1;
-    // file_event->is_rdev_bdev_mismatch_new = -1;
     
 
     struct timespec64 old_atime = {};
     struct timespec64 old_mtime = {};
     struct timespec64 old_ctime = {};
 
-    // Read old timestamps from inode (works for kernel >=5.12)
     bpf_core_read(&old_atime, sizeof(old_atime), &dentry->d_inode->__i_atime);
     bpf_core_read(&old_mtime, sizeof(old_mtime), &dentry->d_inode->__i_mtime);
     bpf_core_read(&old_ctime, sizeof(old_ctime), &dentry->d_inode->__i_ctime);
 
-    // Convert to single u64 nanoseconds for uniform logging / ML
     file_event->old_atime = old_atime.tv_nsec + (old_atime.tv_sec * 1000000000ULL);
     file_event->new_atime = file_event->old_atime;
 
@@ -1569,57 +1442,31 @@ int BPF_PROG(inode_symlink, struct inode *inode, struct dentry *dentry, const ch
 
     if ((mode & _S_IFMT) == _S_IFSOCK)
     {
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "SOCKET");
         __builtin_memcpy(file_event->file_type, "SOCKET", sizeof("SOCKET"));
         __builtin_memcpy(file_event->file_type_new, "SOCKET", sizeof("SOCKET"));
     }
 
     if ((mode & _S_IFMT) == _S_IFREG)
     {
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "REGULAR");
         __builtin_memcpy(file_event->file_type, "REGULAR", sizeof("REGULAR"));
         __builtin_memcpy(file_event->file_type_new, "REGULAR", sizeof("REGULAR"));
     }
     if ((mode & _S_IFMT) == _S_IFDIR)
     {
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "DIR");
         __builtin_memcpy(file_event->file_type, "DIR", sizeof("DIR"));
         __builtin_memcpy(file_event->file_type_new, "DIR", sizeof("DIR"));
     }
 
     if ((mode & _S_IFMT) == _S_IFBLK)
     {
-        // struct bdev_inode *bdi = (struct bdev_inode *)inode;
-        // dev_t bdev_dev = BPF_CORE_READ(&bdi->bdev, bd_dev);
-        // __u32 bdev_major = bdev_dev >> 20;
-        // __u32 bdev_minor = bdev_dev & ((1 << 20) - 1);
-        // file_event->i_bdev_major = bdev_major;
-        // file_event->i_bdev_minor = bdev_minor;
-        // file_event->i_bdev_major_new = bdev_major;
-        // file_event->i_bdev_minor_new = bdev_minor;
-        // file_event->is_block_device = 1;
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "BLOCK_DEVICE");
         __builtin_memcpy(file_event->file_type, "BLOCK_DEVICE", sizeof("BLOCK_DEVICE"));
         __builtin_memcpy(file_event->file_type_new, "BLOCK_DEVICE", sizeof("BLOCK_DEVICE"));
-
-        // if ((file_event->rdev_major != bdev_major || file_event->rdev_minor != bdev_minor))
-        // {
-        //     file_event->is_rdev_bdev_mismatch = 1;
-        //     file_event->is_rdev_bdev_mismatch_new = 1;
-        // }
-        // else
-        // {
-        //     file_event->is_rdev_bdev_mismatch = 0;
-        //     file_event->is_rdev_bdev_mismatch_new = 0;
-        // }
     }
 
     file_event->rdev_minor_new = file_event->rdev_minor;
     file_event->rdev_major_new = file_event->rdev_major;
 
-    // where it points to (WHERE THE SYMLINK WILL PINT TO)
     bpf_core_read_str(file_event->__generics.filename, sizeof(file_event->__generics.filename), symlink_path);
-    // the dentry for the new symlink
     const char unsigned *new_filename = BPF_CORE_READ(dentry, d_name.name);
     bpf_core_read_str(file_event->new_filename, sizeof(file_event->new_filename), new_filename);
 
@@ -1635,27 +1482,21 @@ int BPF_PROG(inode_symlink, struct inode *inode, struct dentry *dentry, const ch
     file_event->is_cross_user_link = -1;
     file_event->is_symlink = (mode & _S_IFLNK) == _S_IFLNK ? 1 : 0;
 
-    // CHECK IF IT IS LINKED TO SENSITIVE FILE
-    // unsigned char is_linked_to_sensitive_file ~ to add from userspace
-    // unsigned char is_sensitive_file ~ to add from userspace
-
     file_event->__auth.is_success = -1;
     file_event->__auth.is_switching_user = -1;
     file_event->__auth.is_switching_root = -1;
     file_event->__auth.is_changing_password = -1;
-    // to add if the user is from root
     file_event->__auth.is_root_command = -1;
     __builtin_memcpy(file_event->__auth.name, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rhost, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rname, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.login_type, "void", sizeof("void"));
-// #pragma unroll
     for (int i = 0; i < MAX_ARGS_CAPTURED; i++)
     {
         __builtin_memset(file_event->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // socket default
+    
     file_event->__sock.protocol_family = -1;
     file_event->__sock.socket_type = -1;
     file_event->__sock.protocol = -1;
@@ -1671,15 +1512,13 @@ int BPF_PROG(inode_symlink, struct inode *inode, struct dentry *dentry, const ch
     file_event->__sock.ifindex = -1;
     file_event->__sock.kernel_sock = -1;
     file_event->__sock.is_success = -1;
-    // unsigned char is_sensitive_file ~ to add from userspace
     __builtin_memcpy(file_event->__sock.path, "void", sizeof("void"));
     __builtin_memcpy(file_event->__sock.ipv6, "void", sizeof("void"));
     __builtin_memcpy(file_event->__sock.local_ipv6_socket_addr, "void", sizeof("void"));
 
-    /* Link-related */
     file_event->is_linked_to_sensitive_file = -1;
 
-    /* Symlink / directory / rename indicators */
+    
     file_event->was_dir_removed = -1;
     file_event->do_not_update_atime = -1;
 
@@ -1721,11 +1560,9 @@ int BPF_PROG(inode_mkdir, struct inode *inode, struct dentry *dentry, umode_t mo
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
-    // if(e->comm){
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);
     if (isCommBlocked != NULL)
     {
-        // bpf_ringbuf_discard(e,0);
         return 0;
     }
 
@@ -1735,7 +1572,6 @@ int BPF_PROG(inode_mkdir, struct inode *inode, struct dentry *dentry, umode_t mo
     if (!file_event)
     {
         bpf_printk("bpf_ringbuf_reserve failed for file event (lsm/inode_mkdir) \n");
-        // bpf_ringbuf_discard(&e, 0);
         return 0;
     }
 
@@ -1766,10 +1602,6 @@ int BPF_PROG(inode_mkdir, struct inode *inode, struct dentry *dentry, umode_t mo
     file_event->old_gid = BPF_CORE_READ(dentry, d_inode, i_gid).val;
     file_event->new_uid = file_event->old_uid;
     file_event->new_gid = file_event->old_gid;
-    // file_event->old_size = BPF_CORE_READ(dentry, d_inode, i_size);
-    // file_event->new_size = file_event->old_size;
-    // file_event->was_size_extended = -1;
-    // file_event->was_size_truncated = -1;
     file_event->was_file_modified = -1;
 
     file_event->new_mode = mode;
@@ -1781,12 +1613,10 @@ int BPF_PROG(inode_mkdir, struct inode *inode, struct dentry *dentry, umode_t mo
     struct timespec64 old_mtime = {};
     struct timespec64 old_ctime = {};
 
-    // Read old timestamps from inode (works for kernel >=5.12)
     bpf_core_read(&old_atime, sizeof(old_atime), &dentry->d_inode->__i_atime);
     bpf_core_read(&old_mtime, sizeof(old_mtime), &dentry->d_inode->__i_mtime);
     bpf_core_read(&old_ctime, sizeof(old_ctime), &dentry->d_inode->__i_ctime);
 
-    // Convert to single u64 nanoseconds for uniform logging / ML
     file_event->old_atime = old_atime.tv_nsec + (old_atime.tv_sec * 1000000000ULL);
     file_event->new_atime = file_event->old_atime;
 
@@ -1795,8 +1625,6 @@ int BPF_PROG(inode_mkdir, struct inode *inode, struct dentry *dentry, umode_t mo
 
     file_event->old_ctime = old_ctime.tv_nsec + (old_ctime.tv_sec * 1000000000ULL);
     file_event->new_ctime = file_event->old_ctime;
-
-    // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "DIR");
     __builtin_memcpy(file_event->file_type, "DIR", sizeof("DIR"));
     __builtin_memcpy(file_event->file_type_new, "DIR", sizeof("DIR"));
     file_event->inode_number = BPF_CORE_READ(dentry, d_inode,i_ino);
@@ -1810,19 +1638,17 @@ int BPF_PROG(inode_mkdir, struct inode *inode, struct dentry *dentry, umode_t mo
     file_event->__auth.is_switching_user = -1;
     file_event->__auth.is_switching_root = -1;
     file_event->__auth.is_changing_password = -1;
-    // to add if the user is from root
     file_event->__auth.is_root_command = -1;
     __builtin_memcpy(file_event->__auth.name, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rhost, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rname, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.login_type, "void", sizeof("void"));
-// #pragma unroll
     for (int i = 0; i < MAX_ARGS_CAPTURED; i++)
     {
         __builtin_memset(file_event->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // socket default
+    
     file_event->__sock.protocol_family = -1;
     file_event->__sock.socket_type = -1;
     file_event->__sock.protocol = -1;
@@ -1841,14 +1667,12 @@ int BPF_PROG(inode_mkdir, struct inode *inode, struct dentry *dentry, umode_t mo
     __builtin_memcpy(file_event->__sock.path, "void", sizeof("void"));
     __builtin_memcpy(file_event->__sock.ipv6, "void", sizeof("void"));
     __builtin_memcpy(file_event->__sock.local_ipv6_socket_addr, "void", sizeof("void"));
-    // unsigned char is_sensitive_file ~ to add from userspace
 
-    /* Link-related */
     file_event->is_linked_file_SGID_or_SUID = -1;
     file_event->is_linked_to_sensitive_file = -1;
     file_event->is_cross_user_link = -1;
 
-    /* Symlink / directory / rename indicators */
+    
     file_event->is_symlink = -1;
     file_event->was_dir_removed = 0;
     umode_t dir_mode = BPF_CORE_READ(inode, i_mode);
@@ -1907,11 +1731,9 @@ int BPF_PROG(inode_rmdir_func, struct inode *inode, struct dentry *dentry)
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
-    // if(e->comm){
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);
     if (isCommBlocked != NULL)
     {
-        // bpf_ringbuf_discard(e,0);
         return 0;
     }
 
@@ -1919,7 +1741,6 @@ int BPF_PROG(inode_rmdir_func, struct inode *inode, struct dentry *dentry)
     if (!file_event)
     {
         bpf_printk("bpf_ringbuf_reserve failed for file event (lsm/inode_rmdir) \n");
-        // bpf_ringbuf_discard(&e, 0);
         return 0;
     }
 
@@ -1949,10 +1770,6 @@ int BPF_PROG(inode_rmdir_func, struct inode *inode, struct dentry *dentry)
     file_event->old_gid = BPF_CORE_READ(dentry, d_inode, i_gid).val;
     file_event->new_uid = file_event->old_uid;
     file_event->new_gid = file_event->old_gid;
-    // file_event->old_size = BPF_CORE_READ(dentry, d_inode, i_size);
-    // file_event->new_size = file_event->old_size;
-    // file_event->was_size_extended = -1;
-    // file_event->was_size_truncated = -1;
     file_event->was_file_modified = -1;
     file_event->new_mode = -1;
     file_event->mode = -1;
@@ -1963,12 +1780,10 @@ int BPF_PROG(inode_rmdir_func, struct inode *inode, struct dentry *dentry)
     struct timespec64 old_mtime = {};
     struct timespec64 old_ctime = {};
 
-    // Read old timestamps from inode (works for kernel >=5.12)
     bpf_core_read(&old_atime, sizeof(old_atime), &dentry->d_inode->__i_atime);
     bpf_core_read(&old_mtime, sizeof(old_mtime), &dentry->d_inode->__i_mtime);
     bpf_core_read(&old_ctime, sizeof(old_ctime), &dentry->d_inode->__i_ctime);
 
-    // Convert to single u64 nanoseconds for uniform logging / ML
     file_event->old_atime = old_atime.tv_nsec + (old_atime.tv_sec * 1000000000ULL);
     file_event->new_atime = file_event->old_atime;
 
@@ -1977,8 +1792,6 @@ int BPF_PROG(inode_rmdir_func, struct inode *inode, struct dentry *dentry)
 
     file_event->old_ctime = old_ctime.tv_nsec + (old_ctime.tv_sec * 1000000000ULL);
     file_event->new_ctime = file_event->old_ctime;
-
-    // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "DIR");
     __builtin_memcpy(file_event->file_type, "DIR", sizeof("DIR"));
     __builtin_memcpy(file_event->file_type_new, "DIR", sizeof("DIR"));
     file_event->was_dir_removed = 1;
@@ -1992,19 +1805,17 @@ int BPF_PROG(inode_rmdir_func, struct inode *inode, struct dentry *dentry)
     file_event->__auth.is_switching_user = -1;
     file_event->__auth.is_switching_root = -1;
     file_event->__auth.is_changing_password = -1;
-    // to add if the user is from root
     file_event->__auth.is_root_command = -1;
     __builtin_memcpy(file_event->__auth.name, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rhost, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rname, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.login_type, "void", sizeof("void"));
-// #pragma unroll
     for (int i = 0; i < MAX_ARGS_CAPTURED; i++)
     {
         __builtin_memset(file_event->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // socket default
+    
     file_event->__sock.protocol_family = -1;
     file_event->__sock.socket_type = -1;
     file_event->__sock.protocol = -1;
@@ -2023,14 +1834,12 @@ int BPF_PROG(inode_rmdir_func, struct inode *inode, struct dentry *dentry)
     __builtin_memcpy(file_event->__sock.path, "void", sizeof("void"));
     __builtin_memcpy(file_event->__sock.ipv6, "void", sizeof("void"));
     __builtin_memcpy(file_event->__sock.local_ipv6_socket_addr, "void", sizeof("void"));
-    // unsigned char is_sensitive_file ~ to add from userspace
 
-    /* Link-related */
     file_event->is_linked_file_SGID_or_SUID = -1;
     file_event->is_linked_to_sensitive_file = -1;
     file_event->is_cross_user_link = -1;
 
-    /* Symlink / directory / rename indicators */
+    
     file_event->is_symlink = -1;
     file_event->is_target_dir_world_writable = -1;
     file_event->is_current_dir_world_writable = -1;
@@ -2083,11 +1892,9 @@ int BPF_PROG(inode_mknod, struct inode *inode, struct dentry *dentry, umode_t mo
     char comm[TYPE];
 
     bpf_get_current_comm(comm, sizeof(comm));
-    // if(e->comm){
     __u8 *isCommBlocked = bpf_map_lookup_elem(&comm_filtering, comm);
     if (isCommBlocked != NULL)
     {
-        // bpf_ringbuf_discard(e,0);
         return 0;
     }
 
@@ -2100,7 +1907,6 @@ int BPF_PROG(inode_mknod, struct inode *inode, struct dentry *dentry, umode_t mo
     if (!file_event)
     {
         bpf_printk("bpf_ringbuf_reserve failed for file event (lsm/inode_mknod) \n");
-        // bpf_ringbuf_discard(&e, 0);
         return 0;
     }
 
@@ -2131,17 +1937,7 @@ int BPF_PROG(inode_mknod, struct inode *inode, struct dentry *dentry, umode_t mo
     file_event->old_gid = BPF_CORE_READ(dentry, d_inode, i_gid).val;
     file_event->new_uid = file_event->old_uid;
     file_event->new_gid = file_event->old_gid;
-    // file_event->old_size = BPF_CORE_READ(dentry, d_inode, i_size);
-    // file_event->new_size = file_event->old_size;
-    // file_event->was_size_extended = -1;
-    // file_event->was_size_truncated = -1;
     file_event->was_file_modified = -1;
-    // file_event->i_bdev_major = 0;
-    // file_event->i_bdev_minor = 0;
-    // file_event->i_bdev_major_new = 0;
-    // file_event->i_bdev_minor_new = 0;
-    // file_event->is_rdev_bdev_mismatch = -1;
-    // file_event->is_rdev_bdev_mismatch_new = -1;
     file_event->new_mode = mode;
     file_event->mode = mode;
 
@@ -2151,12 +1947,10 @@ int BPF_PROG(inode_mknod, struct inode *inode, struct dentry *dentry, umode_t mo
     struct timespec64 old_mtime = {};
     struct timespec64 old_ctime = {};
 
-    // Read old timestamps from inode (works for kernel >=5.12)
     bpf_core_read(&old_atime, sizeof(old_atime), &dentry->d_inode->__i_atime);
     bpf_core_read(&old_mtime, sizeof(old_mtime), &dentry->d_inode->__i_mtime);
     bpf_core_read(&old_ctime, sizeof(old_ctime), &dentry->d_inode->__i_ctime);
 
-    // Convert to single u64 nanoseconds for uniform logging / ML
     file_event->old_atime = old_atime.tv_nsec + (old_atime.tv_sec * 1000000000ULL);
     file_event->new_atime = file_event->old_atime;
 
@@ -2168,7 +1962,6 @@ int BPF_PROG(inode_mknod, struct inode *inode, struct dentry *dentry, umode_t mo
 
     if ((mode & _S_IFMT) == _S_IFSOCK)
     {
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "SOCKET");
         __builtin_memcpy(file_event->file_type, "SOCKET", sizeof("SOCKET"));
         __builtin_memcpy(file_event->file_type_new, "SOCKET", sizeof("SOCKET"));
     }
@@ -2205,19 +1998,17 @@ int BPF_PROG(inode_mknod, struct inode *inode, struct dentry *dentry, umode_t mo
     file_event->__auth.is_switching_user = -1;
     file_event->__auth.is_switching_root = -1;
     file_event->__auth.is_changing_password = -1;
-    // to add if the user is from root
     file_event->__auth.is_root_command = -1;
     __builtin_memcpy(file_event->__auth.name, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rhost, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.rname, "void", sizeof("void"));
     __builtin_memcpy(file_event->__auth.login_type, "void", sizeof("void"));
-// #pragma unroll
     for (int i = 0; i < MAX_ARGS_CAPTURED; i++)
     {
         __builtin_memset(file_event->__generics.argv[i], 0, MAX_ARGV_LEN);
     }
 
-    // socket default
+    
     file_event->__sock.protocol_family = -1;
     file_event->__sock.socket_type = -1;
     file_event->__sock.protocol = -1;
@@ -2236,14 +2027,12 @@ int BPF_PROG(inode_mknod, struct inode *inode, struct dentry *dentry, umode_t mo
     __builtin_memcpy(file_event->__sock.path, "void", sizeof("void"));
     __builtin_memcpy(file_event->__sock.ipv6, "void", sizeof("void"));
     __builtin_memcpy(file_event->__sock.local_ipv6_socket_addr, "void", sizeof("void"));
-    // unsigned char is_sensitive_file ~ to add from userspace
 
-    /* Link-related */
     file_event->is_linked_file_SGID_or_SUID = -1;
     file_event->is_linked_to_sensitive_file = -1;
     file_event->is_cross_user_link = -1;
 
-    /* Symlink / directory / rename indicators */
+    
     file_event->is_symlink = -1;
     file_event->is_target_dir_world_writable = -1;
     umode_t dir_mode = BPF_CORE_READ(inode, i_mode);
@@ -2446,12 +2235,10 @@ int BPF_PROG(inode_rename, struct inode *old_inode, struct dentry *old_dir, stru
     struct timespec64 old_mtime = {};
     struct timespec64 old_ctime = {};
 
-    // Read old timestamps from inode (works for kernel >=5.12)
     bpf_core_read(&old_atime, sizeof(old_atime), &old_dir->d_inode->__i_atime);
     bpf_core_read(&old_mtime, sizeof(old_mtime), &old_dir->d_inode->__i_mtime);
     bpf_core_read(&old_ctime, sizeof(old_ctime), &old_dir->d_inode->__i_ctime);
 
-    // Convert to single u64 nanoseconds for uniform logging / ML
     file_event->old_atime = old_atime.tv_nsec + (old_atime.tv_sec * 1000000000ULL);
     file_event->new_atime = file_event->old_atime;
 
@@ -2463,7 +2250,6 @@ int BPF_PROG(inode_rename, struct inode *old_inode, struct dentry *old_dir, stru
 
     if ((mode & _S_IFMT) == _S_IFSOCK)
     {
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "SOCKET");
         __builtin_memcpy(file_event->file_type, "SOCKET", sizeof("SOCKET"));
         __builtin_memcpy(file_event->file_type_new, "SOCKET", sizeof("SOCKET"));
     }
@@ -2477,14 +2263,12 @@ int BPF_PROG(inode_rename, struct inode *old_inode, struct dentry *old_dir, stru
 
     if ((mode & _S_IFMT) == _S_IFREG)
     {
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "REGULAR");
         __builtin_memcpy(file_event->file_type, "REGULAR", sizeof("REGULAR"));
         __builtin_memcpy(file_event->file_type_new, "REGULAR", sizeof("REGULAR"));
     }
 
     if ((mode & _S_IFMT) == _S_IFDIR)
     {
-        // bpf_core_read_user_str(file_event->file_type, sizeof(file_event->file_type), "DIR");
         __builtin_memcpy(file_event->file_type, "DIR", sizeof("DIR"));
         __builtin_memcpy(file_event->file_type_new, "DIR", sizeof("DIR"));
     }
@@ -2506,7 +2290,6 @@ int BPF_PROG(inode_rename, struct inode *old_inode, struct dentry *old_dir, stru
     dev_t rdev = BPF_CORE_READ(old_inode, i_rdev);
     __u32 rdev_major = rdev >> 20;
     __u32 rdev_minor = rdev & ((1 << 20) - 1);
-    // __u16 mode = BPF_CORE_READ(inode, i_mode);
     file_event->rdev_major = rdev_major;
     file_event->rdev_minor = rdev_minor;
 
@@ -2514,7 +2297,6 @@ int BPF_PROG(inode_rename, struct inode *old_inode, struct dentry *old_dir, stru
     dev_t rdev_new = BPF_CORE_READ(new_inode, i_rdev);
     __u32 rdev_major_new = rdev_new >> 20;
     __u32 rdev_minor_new = rdev_new & ((1 << 20) - 1);
-    // __u16 mode = BPF_CORE_READ(inode, i_mode);
     file_event->rdev_minor_new = rdev_minor_new;
     file_event->rdev_minor_new = rdev_minor_new;
 
@@ -2539,10 +2321,9 @@ int BPF_PROG(inode_rename, struct inode *old_inode, struct dentry *old_dir, stru
     file_event->__auth.is_switching_user = -1;
     file_event->__auth.is_switching_root = -1;
     file_event->__auth.is_changing_password = -1;
-    // to add if the user is from root
     file_event->__auth.is_root_command = -1;
 
-    // socket default
+    
     file_event->__sock.protocol_family = -1;
     file_event->__sock.socket_type = -1;
     file_event->__sock.protocol = -1;
@@ -2566,7 +2347,7 @@ int BPF_PROG(inode_rename, struct inode *old_inode, struct dentry *old_dir, stru
     file_event->is_linked_to_sensitive_file = -1;
     file_event->is_cross_user_link = -1;
 
-    /* Symlink / directory / rename indicators */
+    
     file_event->is_symlink = -1;
     file_event->do_not_update_atime = -1;
 

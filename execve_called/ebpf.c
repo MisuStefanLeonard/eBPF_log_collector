@@ -1,9 +1,3 @@
-// #include "exec.h"
-// #include <bpf/bpf_helpers.h>
-// #include <bpf/bpf_tracing.h>
-// #include <bpf/bpf_core_read.h>
-// #include "../vmlinux.h"
-
 #include "../vmlinux/vmlinux.h"
 #include "exec.h"
 #include <bpf/bpf_helpers.h>
@@ -110,7 +104,6 @@ int trace_syscall_execve(struct trace_event_raw_sys_enter *ctx) {
     __u64 id = bpf_get_current_pid_tgid();
     __u32 pid = id >> 32;
     __u32 ppid = (__u32)id;
-    // bpf_printk("ccENTERED SYSCALL EXECVE ENTER\n");
 
 
     if (my_pid){
@@ -142,7 +135,6 @@ int trace_syscall_execve(struct trace_event_raw_sys_enter *ctx) {
     const char *filename = (const char *)ctx->args[0];
     bpf_core_read_user_str(name, sizeof(name), filename);
     findRunnable(comm_from_filename, name);
-    // bpf_printk("Blocked filename at sys_call_execve << %s >> \n", comm_from_filename);
     __u8 *isFilenameBlocked = bpf_map_lookup_elem(&blocked_filenames, name);
     if (isFilenameBlocked != NULL)
     {
@@ -228,8 +220,6 @@ int trace_syscall_execve(struct trace_event_raw_sys_enter *ctx) {
     __builtin_memcpy(e->file_type_new, "void" , sizeof("void"));
     
     e->__generics.exit_code = (BPF_CORE_READ(task, exit_code) >> 8) & 0xff;
-    bpf_printk("ZXZXTYPE: %d\n", e->__generics.evt_type);
-    bpf_printk("ZXZXSIZE: %d\n", (int)sizeof(TrackFileChanges));
 
     // auth default
     e->__auth.is_success = -1;
@@ -269,20 +259,13 @@ int trace_syscall_execve(struct trace_event_raw_sys_enter *ctx) {
     e->new_uid = e->old_uid;
     e->old_gid = e->__generics.gid;
     e->new_gid = e->old_gid;
-    // e->old_size = -1;
-    // e->new_size = -1;
-    /* Default file-related fields to -1 */
+   
     e->old_mtime = -1;
     e->new_mtime = -1;
     e->old_ctime = -1;
     e->new_ctime = -1;
     e->old_atime = -1;
     e->new_atime = -1;
-
-    /* Strings */
-    // __builtin_memset(e->file_type, 0, sizeof(e->file_type));
-    // __builtin_memset(e->file_type_new, 0, sizeof(e->file_type_new));
-    // __builtin_memset(e->new_filename, 0, sizeof(e->new_filename));
 
     /* Sensitive / suid / sgid / sticky / other flags */
     e->is_sensitive_file = -1;
@@ -299,8 +282,6 @@ int trace_syscall_execve(struct trace_event_raw_sys_enter *ctx) {
     e->was_permission_changed = -1;
     e->was_owner_changed = -1;
     e->was_group_changed = -1;
-    // e->was_size_extended = -1;
-    // e->was_size_truncated = -1;
     e->was_creation_time_changed = -1;
     e->was_access_time_changed = -1;
     e->was_modified_time_changed = -1;
@@ -312,10 +293,7 @@ int trace_syscall_execve(struct trace_event_raw_sys_enter *ctx) {
     /* Device numbers */
     e->rdev_minor = -1;
     e->rdev_major = -1;
-    // e->i_bdev_major = -1;
-    // e->i_bdev_minor = -1;
-    // e->is_rdev_bdev_mismatch = -1;
-    // e->is_rdev_bdev_mismatch_new = -1;
+  
 
     /* Link-related */
     e->is_target_dir_world_writable = -1;
@@ -331,9 +309,7 @@ int trace_syscall_execve(struct trace_event_raw_sys_enter *ctx) {
     /* New inode device numbers (rename/move) */
     e->rdev_minor_new = -1;
     e->rdev_major_new = -1;
-    // e->i_bdev_major_new = -1;
-    // e->i_bdev_minor_new = -1;
-
+   
 
     return 0;
 }
@@ -345,7 +321,6 @@ int handle_sys_exit_execve(struct trace_event_raw_sys_exit *ctx)
     int ret = ctx->ret;  // return value from execve()
     int cpuid = bpf_get_smp_processor_id();
     __u32 pid = bpf_get_current_pid_tgid() >> 32;
-    // bpf_printk("ccENTERED SYSCALL EXECVE EXIT FOR PID -> %d\n", pid);
     TrackFileChanges *e = bpf_map_lookup_elem(&execve_calls, &pid);
     if (!e){
         bpf_printk("No execve event found in the map. Check the execve_enter");
@@ -386,8 +361,6 @@ int handle_sys_exit_execve(struct trace_event_raw_sys_exit *ctx)
     int delete = bpf_map_delete_elem(&execve_calls, &pid);
     if (delete != 0){
         bpf_printk("(execve_exit)\nFailed to delete entry from execve_calls map\n");
-        // bpf_ringbuf_discard(out,0);
-        // return 0;
     }
 
     return 0;

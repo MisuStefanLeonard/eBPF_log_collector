@@ -15,7 +15,6 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <errno.h>
-// #include "redis/redislogic.c"
 #include "execve_called/exec.h"
 #include "file_events/file_exec.h"
 #include "execve_called/exec.skel.h"
@@ -33,8 +32,8 @@
 /* Global CSV file handle */
 FILE *csv_file = NULL;
 static char sensitive_list[MAX_SENSITIVE][MAX_PATH_LEN];
-static char sensitive_patterns_file_names[64][64];
-static char sensitive_patterns_exe[64][64];
+// static char sensitive_patterns_file_names[64][64];
+// static char sensitive_patterns_exe[64][64];
 static int sensitive_count = 0;
 static int blocked_comm_count = 0;
 static int blocked_filenames_count = 0;
@@ -685,61 +684,75 @@ unsigned char is_sensitive_file(const char *filename)
     return 0;
 }
 
-void loadCLevelFiles(){
-    FILE *fp_bfpfp = fopen("blacklist_full_path_filenames_patterns.txt", "r");
-    FILE *fp_e = fopen("blacklist_exe.txt", "r");
+// void loadCLevelFiles(){
+//     FILE *fp_bfpfp = fopen("blacklist_full_path_filenames_patterns.txt", "r");
+//     FILE *fp_e = fopen("blacklist_exe.txt", "r");
 
-    if (!fp_bfpfp)
-    {
-        perror("Failed to open blacklist_full_path_filenames_patterns.txt");
-        return;
-    }
+//     if (!fp_bfpfp)
+//     {
+//         perror("Failed to open blacklist_full_path_filenames_patterns.txt");
+//         return;
+//     }
 
-    if (!fp_e)
-    {
-        perror("Failed to open blacklist_full_path_filenames_patterns.txt");
-        return;
-    }
-    char buffer[64] = {};
-    int count = 0;
-    while (fgets(buffer, sizeof(buffer),fp_bfpfp) != NULL)
-    {
-        buffer[strcspn(buffer, "\n")] = '\0'; // remove newline
-        if (count < 64)
-        {
-            strncpy(sensitive_patterns_file_names[count], buffer, sizeof(sensitive_patterns_file_names[0]) - 1);
-            sensitive_patterns_file_names[count][sizeof(sensitive_patterns_file_names[0]) - 1] = '\0';
-            count++;
-        }
-    }
+//     if (!fp_e)
+//     {
+//         perror("Failed to open blacklist_full_path_filenames_patterns.txt");
+//         return;
+//     }
+//     char buffer[64] = {};
+//     int count = 0;
+//     while (fgets(buffer, sizeof(buffer),fp_bfpfp) != NULL)
+//     {
+//         buffer[strcspn(buffer, "\n")] = '\0'; // remove newline
+//         if (count < 64)
+//         {
+//             strncpy(sensitive_patterns_file_names[count], buffer, sizeof(sensitive_patterns_file_names[0]) - 1);
+//             sensitive_patterns_file_names[count][sizeof(sensitive_patterns_file_names[0]) - 1] = '\0';
+//             count++;
+//         }
+//     }
 
-    fclose(fp_bfpfp);
+//     fclose(fp_bfpfp);
 
-    memset(buffer, 0, sizeof(buffer));
-    count = 0;
-    while (fgets(buffer, sizeof(buffer),fp_e) != NULL)
-    {
-        buffer[strcspn(buffer, "\n")] = '\0'; // remove newline
-        if (count < 64)
-        {
-            strncpy(sensitive_patterns_exe[count], buffer, sizeof(sensitive_patterns_exe[0]) - 1);
-            sensitive_patterns_exe[count][sizeof(sensitive_patterns_exe[0]) - 1] = '\0';
-            count++;
-        }
-    }
+//     memset(buffer, 0, sizeof(buffer));
+//     count = 0;
+//     while (fgets(buffer, sizeof(buffer),fp_e) != NULL)
+//     {
+//         buffer[strcspn(buffer, "\n")] = '\0'; // remove newline
+//         if (count < 64)
+//         {
+//             strncpy(sensitive_patterns_exe[count], buffer, sizeof(sensitive_patterns_exe[0]) - 1);
+//             sensitive_patterns_exe[count][sizeof(sensitive_patterns_exe[0]) - 1] = '\0';
+//             count++;
+//         }
+//     }
 
-    fclose(fp_e);
-    return;
+//     fclose(fp_e);
+//     return;
 
-}
+// }
 
-bool checkPatterns(const char* name,char whereToCheck){
-    if (whereToCheck == 'e'){
-        // check exe patterns
-    }else if (whereToCheck == 'f'){
-        // check filenames patterns
-    }
-}
+// bool checkPatterns(const char* name,char whereToCheck){
+//     if (whereToCheck == 'e'){
+//         // check exe patterns
+//         for(int i = 0 ; i < sizeof(sensitive_patterns_exe); i++){
+//             char* isPatternInName = strstr(name, sensitive_patterns_exe[i]);
+//             if (isPatternInName ==  NULL){
+//                 return false;
+//                 break;
+//             }
+//         }
+//     }else if (whereToCheck == 'f'){
+//         // check filenames patterns
+//         for(int i = 0 ; i < sizeof(sensitive_patterns_file_names); i++){
+//             char* isPatternInName = strstr(name, sensitive_patterns_file_names[i]);
+//             if (isPatternInName ==  NULL){
+//                 return false;
+//                 break;
+//             }
+//         }
+//     }
+// }
 
 
 static int handle_event(void *ctx, void *data, size_t sa)
@@ -749,7 +762,7 @@ static int handle_event(void *ctx, void *data, size_t sa)
         return -1; 
     }
 
-    loadCLevelFiles();
+    // loadCLevelFiles();
 
 
     const TrackFileChanges *event = (TrackFileChanges *)data;
@@ -804,11 +817,11 @@ static int handle_event(void *ctx, void *data, size_t sa)
                         sizeof(local_event.new_filename) - 1);
                 local_event.new_filename[sizeof(local_event.new_filename) - 1] = '\0';
                 
-                isPatternPresentInFilename = checkPatterns(local_event.__generics.filename, 'f');
+                // isPatternPresentInFilename = checkPatterns(local_event.__generics.filename, 'f');
 
-                if (isPatternPresentInFilename){
-                    return;
-                }
+                // if (isPatternPresentInFilename){
+                //     return;
+                // }
             }
     }else{
         if (resolve_complete_path(local_event.__generics.pid,
@@ -823,11 +836,11 @@ static int handle_event(void *ctx, void *data, size_t sa)
                         sizeof(local_event.__generics.filename) - 1);
                 local_event.__generics.filename[sizeof(local_event.__generics.filename) - 1] = '\0';
 
-                isPatternPresentInFilename = checkPatterns(local_event.__generics.filename, 'f');
+                // isPatternPresentInFilename = checkPatterns(local_event.__generics.filename, 'f');
                 
-                if (isPatternPresentInFilename){
-                    return;
-                }
+                // if (isPatternPresentInFilename){
+                //     return;
+                // }
             }
         if (resolve_complete_path(local_event.__generics.pid,
                                     local_event.new_filename,
@@ -849,12 +862,13 @@ static int handle_event(void *ctx, void *data, size_t sa)
     if (resolve_full_exe(local_event.__generics.pid,exe,sizeof(exe)) != 0)
     {
         printf("Did not manage to get exe\n");
-    }else{
-        bool isPatternPresentInExe = checkPatterns(exe,'e');
-        if (isPatternPresentInExe){
-            return;
-        }
     }
+    // }else{
+    //     bool isPatternPresentInExe = checkPatterns(exe,'e');
+    //     if (isPatternPresentInExe){
+    //         return;
+    //     }
+    // }
 
     unsigned int permission_bits_octal_old_mode = local_event.mode & MODE_MASK;
     unsigned int permission_bits_octal_new_mode = local_event.new_mode & MODE_MASK;
@@ -1019,6 +1033,8 @@ int main(void)
     }
 
     load_sensitive_files("sensitive_files.txt");
+    // loadCLevelFiles();
+
 
     fprintf(csv_file,
             "event_type,event_type_str,"
