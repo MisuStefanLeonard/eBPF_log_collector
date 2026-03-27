@@ -82,7 +82,6 @@ Timer-0
 QuotaManager IO
 (sd-bright)
 systemd-udevd
-(sd-bright)
 (udev-worker)
 tracker-miner-f
 Renderer
