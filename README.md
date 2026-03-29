@@ -1,4 +1,29 @@
-# STEPS
+# TOC
+
+- [**1. eBPF / Redis Installation**](#1-ebpf-installation)
+    - [**Installation Steps**](#installation)
+    - [**Check LSM Availability**](#check-lsm-avalibility)
+    - [**Add LSM**](#add-lsm-3)
+    - [**Clone Repository**](#clone-repo)
+- [**2. Redis Stack Installation**](#2-redis-stack-installation)
+- [**3. cJSON installation**](#3-cjson-library-installation-(taken-from-docs))
+- [**4. Documentation**](#4-official-documentation)
+    - [**Part I**](#part-i)
+      - [**What is eBPF ? How it works ?**](#i-what-is-ebpf--how-it-works-?)
+      - [**Why on linux OS?**](#ii-why-only-on-linux-os-)
+    - [**Part II**](#part-ii)
+      - [**1. File structure**](#1-file-structure)
+      - [**2. Types of programs**](#2-types-of-programs)
+      - [**3. Programs compositions**](#3-program-composition)
+      - [**4. Programs entrypoint**](#4-programs-entrypoint)
+      - [**5. Log structure**](#5-log-structure)
+      - [**6. Macro definitions**](#6-macro-definitions)
+      - [**7. How the verifier works. Problems**](#7-how-the-verifier-works--problems)
+      - [**8. Future work**](#8-future-work)
+
+
+
+
 
 ## 1. eBPF installation
 
@@ -20,7 +45,7 @@ sudo make install
 bpftool version
 ```
 
-### CHECK LSM AVALIBILITY ( Linux 5.7+ integration with eBPF) (if u see this, you're good, else GO TO 3.)
+### CHECK LSM AVALIBILITY
 
 ```bash
 sudo -i  # ( change to root )
@@ -51,7 +76,7 @@ cd ..
 make
 ```
 
-## 2. Redis Stack installation
+## 2. Redis Stack Installation
 
 ### Install redis stack (taken from docs)
 
@@ -1537,5 +1562,10 @@ sudo make install
       > **In ‘secure’ mode verifier will reject any type of pointer arithmetic to make sure that kernel addresses don’t leak to unprivileged users**
     - More information about the different errors that can appear, check the [eBPF documentation](https://docs.kernel.org/bpf/verifier.html).
     - To add more here...
+  - #### 8. Future work
+    - For the future work, I think the considerant would be in the same time as the program as a whole being an **RTIDS**, to also **mitigate** the attacks.
+    - Of course , this impplies the modifying the architecture as a whole, but maybe I will begin working on a solution.
+    - Feel free to add improvments, come with suggestions , optimizing code
+  
 
 
