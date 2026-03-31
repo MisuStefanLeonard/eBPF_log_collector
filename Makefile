@@ -95,11 +95,11 @@ socket_called: $(socket_folder)/$(socket_ebpf) auth_called
 
 # Just link and compile the final executable
 build: socket_called
-	gcc -g -O0 exec.c redis/redislogic.c -lelf -lbpf -lcjson -lhiredis -o ebpf_runner
+	gcc -g -O0 exec.c redis/redislogic.c -lelf -lbpf -lcjson -lhiredis -o exec.o
 
 # A dedicated run target if you want to test eBPF manually
 run: build
-	LIBBPF_DEBUG=1 sudo ./ebpf_runner
+	LIBBPF_DEBUG=1 sudo ./exec.o
 
 # Clean everything
 clean:
@@ -108,6 +108,6 @@ clean:
 	rm -f $(socket_folder)/socket_ebpf.o $(socket_folder)/socket_ebpf.skel.h
 	rm -f $(auth_folder)/auth_ebpf.o $(auth_folder)/auth_ebpf.skel.h
 	rm -f $(process_events_folder)/process_events_ebpf.o $(process_events_folder)/process_exec.skel.h
-	rm -f ebpf_runner
+	rm -f exec.o
 
 .PHONY: all build run file_open_called execve_called process_exit_called auth_called socket_called clean
