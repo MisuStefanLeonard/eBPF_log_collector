@@ -322,176 +322,176 @@ void convert_from_int_to_ipv4(unsigned char* buff, unsigned int ipv4){
 
 }
 
-/* Unified print + CSV function */
-static void print_event_generic(
-    TrackFileChanges event, const char *username, const char *groupname
-    ,unsigned int permission_bits_octal_old_mode, unsigned int permission_bits_octal_new_mode,
-    char exe[EXE_BUFFER])
-{
+// /* Unified print + CSV function */
+// static void print_event_generic(
+//     TrackFileChanges event, const char *username, const char *groupname
+//     ,unsigned int permission_bits_octal_old_mode, unsigned int permission_bits_octal_new_mode,
+//     char exe[EXE_BUFFER])
+// {
 
-    const char* event_type = event_type_to_str(event.__generics.evt_type);
-    printf("EVENT -> %d\n", event.__generics.evt_type);
-    printf("sizeof(TrackFileChanges)= %zu\n", sizeof(TrackFileChanges));
+//     const char* event_type = event_type_to_str(event.__generics.evt_type);
+//     printf("EVENT -> %d\n", event.__generics.evt_type);
+//     printf("sizeof(TrackFileChanges)= %zu\n", sizeof(TrackFileChanges));
 
-    /*generics*/
-    fprintf(csv_file, "%d,%s,", event.__generics.evt_type,event_type);
-    fprintf(csv_file, "%u,%u,%s,%s,", event.__generics.uid, event.__generics.gid, username, groupname);
-    fprintf(csv_file, "%u,%u,%d,%lld,", event.__generics.pid, event.__generics.ppid, event.__generics.exit_code, event.__generics.duration_ns);
-    fprintf(csv_file, "%s,%s,%s,%llu,", event.__generics.comm, exe,event.__generics.filename, event.comm_timestamp);
-    /*file metadata*/
-    fprintf(csv_file, "%u,%04o,%u,%04o,", event.mode, permission_bits_octal_old_mode, event.new_mode ,permission_bits_octal_new_mode);
-    fprintf(csv_file, "%hhu, %hhu,", event.was_success, event.do_not_update_atime);
-    fprintf(csv_file, "%u,%u,%u,%u,", event.old_uid, event.new_uid, event.old_gid, event.new_gid);
-    // fprintf(csv_file, "%lu, %lu, ", event.old_size, event.new_size);
-    fprintf(csv_file, "%llu, %llu,", event.old_mtime, event.new_mtime);
-    fprintf(csv_file, "%llu, %llu,", event.old_ctime, event.new_ctime);
-    fprintf(csv_file, "%llu, %llu,", event.old_atime, event.new_atime);
-    fprintf(csv_file, "%s,%s,", event.file_type, event.file_type_new);
+//     /*generics*/
+//     fprintf(csv_file, "%d,%s,", event.__generics.evt_type,event_type);
+//     fprintf(csv_file, "%u,%u,%s,%s,", event.__generics.uid, event.__generics.gid, username, groupname);
+//     fprintf(csv_file, "%u,%u,%d,%lld,", event.__generics.pid, event.__generics.ppid, event.__generics.exit_code, event.__generics.duration_ns);
+//     fprintf(csv_file, "%s,%s,%s,%llu,", event.__generics.comm, exe,event.__generics.filename, event.comm_timestamp);
+//     /*file metadata*/
+//     fprintf(csv_file, "%u,%04o,%u,%04o,", event.mode, permission_bits_octal_old_mode, event.new_mode ,permission_bits_octal_new_mode);
+//     fprintf(csv_file, "%hhu, %hhu,", event.was_success, event.do_not_update_atime);
+//     fprintf(csv_file, "%u,%u,%u,%u,", event.old_uid, event.new_uid, event.old_gid, event.new_gid);
+//     // fprintf(csv_file, "%lu, %lu, ", event.old_size, event.new_size);
+//     fprintf(csv_file, "%llu, %llu,", event.old_mtime, event.new_mtime);
+//     fprintf(csv_file, "%llu, %llu,", event.old_ctime, event.new_ctime);
+//     fprintf(csv_file, "%llu, %llu,", event.old_atime, event.new_atime);
+//     fprintf(csv_file, "%s,%s,", event.file_type, event.file_type_new);
 
-    /* file flags / attributes */
-    fprintf(csv_file,
-            "%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,",
-            event.is_sensitive_file,
-            event.was_suid_changed, event.suid_set, event.suid_cleared,
-            event.was_sgid_changed, event.sgid_set, event.sgid_cleared,
-            event.was_sticky_changed, event.sticky_set, event.sticky_cleared);
+//     /* file flags / attributes */
+//     fprintf(csv_file,
+//             "%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,",
+//             event.is_sensitive_file,
+//             event.was_suid_changed, event.suid_set, event.suid_cleared,
+//             event.was_sgid_changed, event.sgid_set, event.sgid_cleared,
+//             event.was_sticky_changed, event.sticky_set, event.sticky_cleared);
 
-    fprintf(csv_file,
-            // TODO de vazut parametrii
-            "%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,",
-            event.was_permission_changed,
-            event.was_owner_changed,
-            event.was_group_changed,
-            // event.was_size_extended,
-            // event.was_size_truncated,
-            event.was_creation_time_changed,
-            event.was_access_time_changed,
-            event.was_modified_time_changed);
+//     fprintf(csv_file,
+//             // TODO de vazut parametrii
+//             "%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,",
+//             event.was_permission_changed,
+//             event.was_owner_changed,
+//             event.was_group_changed,
+//             // event.was_size_extended,
+//             // event.was_size_truncated,
+//             event.was_creation_time_changed,
+//             event.was_access_time_changed,
+//             event.was_modified_time_changed);
 
-    fprintf(csv_file,
-            "%hhu,%hhu,%hhu,",
-            event.was_file_created,
-            event.was_file_modified,
-            event.is_target_dir_world_writable);
+//     fprintf(csv_file,
+//             "%hhu,%hhu,%hhu,",
+//             event.was_file_created,
+//             event.was_file_modified,
+//             event.is_target_dir_world_writable);
 
-    /* device and file linkage */
-    fprintf(csv_file,
-            "%u,%u,%u,%u,%u,%u,%u,%u,",
-            event.dev_major, event.dev_major_new,
-            event.dev_minor, event.dev_minor_new,
-            event.rdev_major, event.rdev_minor,
-            event.rdev_major_new, event.rdev_minor_new);
-            // event.i_bdev_major, event.i_bdev_minor,
-            // event.i_bdev_major_new, event.i_bdev_minor_new,
-            // event.is_rdev_bdev_mismatch, event.is_rdev_bdev_mismatch_new);
+//     /* device and file linkage */
+//     fprintf(csv_file,
+//             "%u,%u,%u,%u,%u,%u,%u,%u,",
+//             event.dev_major, event.dev_major_new,
+//             event.dev_minor, event.dev_minor_new,
+//             event.rdev_major, event.rdev_minor,
+//             event.rdev_major_new, event.rdev_minor_new);
+//             // event.i_bdev_major, event.i_bdev_minor,
+//             // event.i_bdev_major_new, event.i_bdev_minor_new,
+//             // event.is_rdev_bdev_mismatch, event.is_rdev_bdev_mismatch_new);
 
-    fprintf(csv_file,
-            "%hhu,%hhu,%hhu,%hhu,%s,%hhu,%hhu,",
-            event.is_linked_file_SGID_or_SUID,
-            event.is_linked_to_sensitive_file,
-            event.is_cross_user_link,
-            event.is_symlink,
-            event.new_filename,
-            event.was_dir_removed,
-            event.is_current_dir_world_writable);
+//     fprintf(csv_file,
+//             "%hhu,%hhu,%hhu,%hhu,%s,%hhu,%hhu,",
+//             event.is_linked_file_SGID_or_SUID,
+//             event.is_linked_to_sensitive_file,
+//             event.is_cross_user_link,
+//             event.is_symlink,
+//             event.new_filename,
+//             event.was_dir_removed,
+//             event.is_current_dir_world_writable);
 
-    /* authentication section */
-    fprintf(csv_file,
-            "%hhu,%hhu,%hhu,%hhu,%s,%s,%s,%s,%hhu,",
-            event.__auth.is_switching_user,
-            event.__auth.is_switching_root,
-            event.__auth.is_changing_password,
-            event.__auth.is_root_command,
-            event.__auth.name,
-            event.__auth.rhost,
-            event.__auth.rname,
-            event.__auth.login_type,
-            event.__auth.is_success);
+//     /* authentication section */
+//     fprintf(csv_file,
+//             "%hhu,%hhu,%hhu,%hhu,%s,%s,%s,%s,%hhu,",
+//             event.__auth.is_switching_user,
+//             event.__auth.is_switching_root,
+//             event.__auth.is_changing_password,
+//             event.__auth.is_root_command,
+//             event.__auth.name,
+//             event.__auth.rhost,
+//             event.__auth.rname,
+//             event.__auth.login_type,
+//             event.__auth.is_success);
 
-    unsigned char buff[4];
-    unsigned char buff_local[4];
-    // 255.255.255.255 + \0
-    convert_from_int_to_ipv4(buff,event.__sock.ipv4);
-    convert_from_int_to_ipv4(buff_local,event.__sock.local_ipv4_socket_addr);
-    char ipv4_string[16];
-    char ipv4_string_local[16];
-    snprintf(ipv4_string, sizeof(ipv4_string), "%d.%d.%d.%d", buff[0],buff[1],buff[2],buff[3]);
-    snprintf(ipv4_string_local, sizeof(ipv4_string_local), "%d.%d.%d.%d", buff_local[0],buff_local[1],buff_local[2],buff_local[3]);
+//     unsigned char buff[4];
+//     unsigned char buff_local[4];
+//     // 255.255.255.255 + \0
+//     convert_from_int_to_ipv4(buff,event.__sock.ipv4);
+//     convert_from_int_to_ipv4(buff_local,event.__sock.local_ipv4_socket_addr);
+//     char ipv4_string[16];
+//     char ipv4_string_local[16];
+//     snprintf(ipv4_string, sizeof(ipv4_string), "%d.%d.%d.%d", buff[0],buff[1],buff[2],buff[3]);
+//     snprintf(ipv4_string_local, sizeof(ipv4_string_local), "%d.%d.%d.%d", buff_local[0],buff_local[1],buff_local[2],buff_local[3]);
 
 
-    /* socket section */
-    fprintf(csv_file,
-            "%d,%d,%d,%hu,%s,",
-            event.__sock.protocol_family,
-            event.__sock.socket_type,
-            event.__sock.protocol,
-            event.__sock.port,
-            ipv4_string);
+//     /* socket section */
+//     fprintf(csv_file,
+//             "%d,%d,%d,%hu,%s,",
+//             event.__sock.protocol_family,
+//             event.__sock.socket_type,
+//             event.__sock.protocol,
+//             event.__sock.port,
+//             ipv4_string);
 
-    char ipv6_str[40] = {0};
-    char local_ipv6_str[40] = {0};
+//     char ipv6_str[40] = {0};
+//     char local_ipv6_str[40] = {0};
 
-    snprintf(ipv6_str, sizeof(ipv6_str),
-             "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
-             event.__sock.ipv6[0], event.__sock.ipv6[1], event.__sock.ipv6[2], event.__sock.ipv6[3],
-             event.__sock.ipv6[4], event.__sock.ipv6[5], event.__sock.ipv6[6], event.__sock.ipv6[7],
-             event.__sock.ipv6[8], event.__sock.ipv6[9], event.__sock.ipv6[10], event.__sock.ipv6[11],
-             event.__sock.ipv6[12], event.__sock.ipv6[13], event.__sock.ipv6[14], event.__sock.ipv6[15]);
+//     snprintf(ipv6_str, sizeof(ipv6_str),
+//              "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+//              event.__sock.ipv6[0], event.__sock.ipv6[1], event.__sock.ipv6[2], event.__sock.ipv6[3],
+//              event.__sock.ipv6[4], event.__sock.ipv6[5], event.__sock.ipv6[6], event.__sock.ipv6[7],
+//              event.__sock.ipv6[8], event.__sock.ipv6[9], event.__sock.ipv6[10], event.__sock.ipv6[11],
+//              event.__sock.ipv6[12], event.__sock.ipv6[13], event.__sock.ipv6[14], event.__sock.ipv6[15]);
 
-    snprintf(local_ipv6_str, sizeof(local_ipv6_str),
-             "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
-             event.__sock.local_ipv6_socket_addr[0], event.__sock.local_ipv6_socket_addr[1],
-             event.__sock.local_ipv6_socket_addr[2], event.__sock.local_ipv6_socket_addr[3],
-             event.__sock.local_ipv6_socket_addr[4], event.__sock.local_ipv6_socket_addr[5],
-             event.__sock.local_ipv6_socket_addr[6], event.__sock.local_ipv6_socket_addr[7],
-             event.__sock.local_ipv6_socket_addr[8], event.__sock.local_ipv6_socket_addr[9],
-             event.__sock.local_ipv6_socket_addr[10], event.__sock.local_ipv6_socket_addr[11],
-             event.__sock.local_ipv6_socket_addr[12], event.__sock.local_ipv6_socket_addr[13],
-             event.__sock.local_ipv6_socket_addr[14], event.__sock.local_ipv6_socket_addr[15]);
+//     snprintf(local_ipv6_str, sizeof(local_ipv6_str),
+//              "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+//              event.__sock.local_ipv6_socket_addr[0], event.__sock.local_ipv6_socket_addr[1],
+//              event.__sock.local_ipv6_socket_addr[2], event.__sock.local_ipv6_socket_addr[3],
+//              event.__sock.local_ipv6_socket_addr[4], event.__sock.local_ipv6_socket_addr[5],
+//              event.__sock.local_ipv6_socket_addr[6], event.__sock.local_ipv6_socket_addr[7],
+//              event.__sock.local_ipv6_socket_addr[8], event.__sock.local_ipv6_socket_addr[9],
+//              event.__sock.local_ipv6_socket_addr[10], event.__sock.local_ipv6_socket_addr[11],
+//              event.__sock.local_ipv6_socket_addr[12], event.__sock.local_ipv6_socket_addr[13],
+//              event.__sock.local_ipv6_socket_addr[14], event.__sock.local_ipv6_socket_addr[15]);
 
-    fprintf(csv_file,
-            "%s,",
-            ipv6_str);
+//     fprintf(csv_file,
+//             "%s,",
+//             ipv6_str);
 
-    fprintf(csv_file, "%hu,%s,", event.__sock.local_socket_port, ipv4_string_local);
+//     fprintf(csv_file, "%hu,%s,", event.__sock.local_socket_port, ipv4_string_local);
 
-    fprintf(csv_file,
-            "%s,",
-            local_ipv6_str);
+//     fprintf(csv_file,
+//             "%s,",
+//             local_ipv6_str);
 
-    fprintf(csv_file,
-            "%s,%d,%d,%d,%d,%d,%hhu,%hhu,%hhu,",
-            event.__sock.path,
-            event.__sock.peer_pid,
-            event.__sock.peer_uid,
-            event.__sock.peer_gid,
-            event.__sock.backlog_value,
-            event.__sock.ifindex,
-            event.__sock.kernel_sock,
-            event.__sock.is_important_port,
-            event.__sock.is_success);
+//     fprintf(csv_file,
+//             "%s,%d,%d,%d,%d,%d,%hhu,%hhu,%hhu,",
+//             event.__sock.path,
+//             event.__sock.peer_pid,
+//             event.__sock.peer_uid,
+//             event.__sock.peer_gid,
+//             event.__sock.backlog_value,
+//             event.__sock.ifindex,
+//             event.__sock.kernel_sock,
+//             event.__sock.is_important_port,
+//             event.__sock.is_success);
 
-    /* Print argv separately */
-    if (event.__generics.argv)
-    {
-        fprintf(csv_file, "\""); 
+//     /* Print argv separately */
+//     if (event.__generics.argv)
+//     {
+//         fprintf(csv_file, "\""); 
         
-        for (int i = 0; i < MAX_ARGS_CAPTURED; i++)
-        {
-            if (event.__generics.argv[i][0] == '\0')
-                break;
-            fprintf(csv_file, "%s ", event.__generics.argv[i]); 
-        }
+//         for (int i = 0; i < MAX_ARGS_CAPTURED; i++)
+//         {
+//             if (event.__generics.argv[i][0] == '\0')
+//                 break;
+//             fprintf(csv_file, "%s ", event.__generics.argv[i]); 
+//         }
 
-        // Close the quote and add the final newline
-        fprintf(csv_file, "\"\n"); 
-    } else {
-        // If there are no args, just print an empty quoted string and the newline
-        fprintf(csv_file, "\"\n");
-    }
-    fflush(csv_file);
-    return;
-}
+//         // Close the quote and add the final newline
+//         fprintf(csv_file, "\"\n"); 
+//     } else {
+//         // If there are no args, just print an empty quoted string and the newline
+//         fprintf(csv_file, "\"\n");
+//     }
+//     fflush(csv_file);
+//     return;
+// }
 
 
 // =============================================================
@@ -906,9 +906,7 @@ static int handle_event(void *ctx, void *data, size_t sa)
     issueCommand(client, "XADD", "file_events", stringJson);
     free(stringJson);
     // --- Print event data ---
-    print_event_generic(local_event, username, groupname, permission_bits_octal_old_mode, permission_bits_octal_new_mode, exe);
-    // print_event_generic(local_event, username, groupname);
-
+    // print_event_generic(local_event, username, groupname, permission_bits_octal_old_mode, permission_bits_octal_new_mode, exe);
 
     return 0;
 }
@@ -1025,65 +1023,65 @@ int main(void)
     setenv("LIBBPF_DEBUG", "1", 1);
     struct ring_buffer *file_events = NULL;
     /* CSV setup */
-    csv_file = fopen("events.csv", "w");
-    if (!csv_file)
-    {
-        perror("Failed to open events.csv for writing");
-        return 1;
-    }
+    // csv_file = fopen("events.csv", "w");
+    // if (!csv_file)
+    // {
+    //     perror("Failed to open events.csv for writing");
+    //     return 1;
+    // }
 
     load_sensitive_files("sensitive_files.txt");
     // loadCLevelFiles();
 
 
-    fprintf(csv_file,
-            "event_type,event_type_str,"
-            "uid,gid,username,groupname,"
-            "pid,ppid,exit_code,durations_ns,"
-            "comm,exe,filename,comm_timestamp,"
-            /* FILE DATA CHANGED */
-            "mode,mode_transformed,new_mode,new_mode_transformed,is_success,do_not_update_atime,"
-            "old_uid,new_uid,old_gid,new_gid,"
-            "old_mtime,new_mtime,"
-            "old_ctime,new_ctime,"
-            "old_atime,new_atime,"
-            "file_type,file_type_new,"
-            "is_sensitive_file,"
-            "was_suid_changed,suid_set,suid_cleared,"
-            "was_sgid_changed,sgid_set,sgid_cleared,"
-            "was_sticky_changed,sticky_set,sticky_cleared,"
-            "was_permission_changed,"
-            "was_owner_changed,"
-            "was_group_changed,"
-            "was_creation_time_changed,"
-            "was_access_time_changed,"
-            "was_modified_time_changed,"
-            "was_file_created,was_file_modified,"
-            "is_target_dir_world_writable,"
-            "dev_major,dev_major_new,dev_minor,dev_minor_new,"
-            "rdev_major,rdev_minor,rdev_major_new,rdev_minor_new,"
-            "is_linked_file_SGID_or_SUID,is_linked_to_sensitive_file,"
-            "is_cross_user_link,"
-            "is_symlink,"
-            "new_filename,"
-            "was_dir_removed,"
-            "is_current_dir_world_writable,"
-            /* AUTH DATA */
-            "is_switching_user,is_switching_root,"
-            "is_changing_password,is_root_command,"
-            "name,rhost,rname,login_type,"
-            "is_auth_success,"
-            /* SOCKET DATA */
-            "protocol_family,socket_type,protocol,"
-            "port,ipv4,ipv6,"
-            "local_socket_port,local_ipv4_socket_addr,local_ipv6_socket_addr,"
-            "path,"
-            "peer_pid,peer_uid,peer_gid,"
-            "backlog,ifindex,"
-            "kernel_sock,is_important_port,is_sock_success,"
-            "argv\n");
+    // fprintf(csv_file,
+    //         "event_type,event_type_str,"
+    //         "uid,gid,username,groupname,"
+    //         "pid,ppid,exit_code,durations_ns,"
+    //         "comm,exe,filename,comm_timestamp,"
+    //         /* FILE DATA CHANGED */
+    //         "mode,mode_transformed,new_mode,new_mode_transformed,is_success,do_not_update_atime,"
+    //         "old_uid,new_uid,old_gid,new_gid,"
+    //         "old_mtime,new_mtime,"
+    //         "old_ctime,new_ctime,"
+    //         "old_atime,new_atime,"
+    //         "file_type,file_type_new,"
+    //         "is_sensitive_file,"
+    //         "was_suid_changed,suid_set,suid_cleared,"
+    //         "was_sgid_changed,sgid_set,sgid_cleared,"
+    //         "was_sticky_changed,sticky_set,sticky_cleared,"
+    //         "was_permission_changed,"
+    //         "was_owner_changed,"
+    //         "was_group_changed,"
+    //         "was_creation_time_changed,"
+    //         "was_access_time_changed,"
+    //         "was_modified_time_changed,"
+    //         "was_file_created,was_file_modified,"
+    //         "is_target_dir_world_writable,"
+    //         "dev_major,dev_major_new,dev_minor,dev_minor_new,"
+    //         "rdev_major,rdev_minor,rdev_major_new,rdev_minor_new,"
+    //         "is_linked_file_SGID_or_SUID,is_linked_to_sensitive_file,"
+    //         "is_cross_user_link,"
+    //         "is_symlink,"
+    //         "new_filename,"
+    //         "was_dir_removed,"
+    //         "is_current_dir_world_writable,"
+    //         /* AUTH DATA */
+    //         "is_switching_user,is_switching_root,"
+    //         "is_changing_password,is_root_command,"
+    //         "name,rhost,rname,login_type,"
+    //         "is_auth_success,"
+    //         /* SOCKET DATA */
+    //         "protocol_family,socket_type,protocol,"
+    //         "port,ipv4,ipv6,"
+    //         "local_socket_port,local_ipv4_socket_addr,local_ipv6_socket_addr,"
+    //         "path,"
+    //         "peer_pid,peer_uid,peer_gid,"
+    //         "backlog,ifindex,"
+    //         "kernel_sock,is_important_port,is_sock_success,"
+    //         "argv\n");
 
-    fflush(csv_file);
+    // fflush(csv_file);
 
     /*
         1.*****************LOAD THE SKELETONS*************************
@@ -1320,8 +1318,8 @@ int main(void)
     }
 
 cleanup:
-    if (csv_file)
-        fclose(csv_file);
+    // if (csv_file)
+    //     fclose(csv_file);
 
     if (file_events)
         ring_buffer__free(file_events);
