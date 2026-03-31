@@ -5,3 +5,5 @@ events.csv
 .vscode/
 dataGathered/
 dataGatheredForEventMatching/
+scripts/
+scripts_results/
