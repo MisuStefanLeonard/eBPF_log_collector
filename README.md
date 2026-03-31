@@ -1564,8 +1564,9 @@ sudo make install
     - To add more here...
   - #### 8. Future work
     - For the future work, I think the considerant would be in the same time as the program as a whole being an **RTIDS**, to also **mitigate** the attacks.
-    - Of course , this impplies the modifying the architecture as a whole, but maybe I will begin working on a solution.
-    - Feel free to add improvments, come with suggestions , optimizing code
+    - Of course , this implies the modifying the architecture as a whole, but maybe I will begin working on a solution.
+    - Feel free to add improvments, come with suggestions , optimizing code.
+    - Enjoy !
   
 
 

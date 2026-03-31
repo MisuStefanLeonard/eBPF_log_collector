@@ -29,7 +29,7 @@
 // #define O_LARGEFILE     00100000    /* Allow large files (>2GB on 32-bit) */
 // #define O_DIRECTORY     00200000    /* Must be a directory */
 // #define O_NOFOLLOW      00400000    /* Do not follow symlinks */
-// #define O_NOATIME       01000000    /* Do not update access time */
+#define O_NOATIME       01000000    /* Do not update access time */
 // #define O_CLOEXEC       02000000    /* Close on exec() */
 // #define O_PATH          04000000    /* Obtain a file descriptor without I/O */
 // #define O_TMPFILE       020000000   /* Create unnamed temporary file */
